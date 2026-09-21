@@ -1,0 +1,391 @@
+Lab 2: Post-Installation Configuration of RHVM
+Objectives
+By the end of this lab, students will be able to:
+
+Configure Red Hat Virtualization Manager (RHVM) for initial production use
+Set up essential environment variables for RHVM administration
+Establish and verify connectivity to RHVM through both CLI and web console interfaces
+Understand the basic architecture and components of RHVM
+Perform initial administrative tasks required for virtualization environment setup
+Prerequisites
+Before starting this lab, students should have:
+
+Basic understanding of Linux command line operations
+Familiarity with virtualization concepts
+Knowledge of network configuration basics
+Understanding of user management in Linux systems
+Completed Lab 1: RHVM Installation (or have access to a pre-installed RHVM system)
+Basic knowledge of web browsers and GUI navigation
+Lab Environment
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines for this lab. Simply click Start Lab to access your environment - no need to build your own virtual machines or install software from scratch.
+
+Your lab environment includes:
+
+RHVM Manager server (pre-installed)
+Administrative access credentials
+Network connectivity configured
+Required packages and dependencies installed
+Task 1: Configure the RHVM Environment
+Subtask 1.1: Verify RHVM Installation Status
+First, let's confirm that RHVM is properly installed and running on your system.
+
+Connect to your RHVM server using the provided credentials
+
+Check the RHVM engine service status:
+
+sudo systemctl status ovirt-engine
+Verify all required services are running:
+sudo systemctl status postgresql
+sudo systemctl status httpd
+sudo systemctl status ovirt-engine-dwhd
+Check the RHVM engine logs for any errors:
+sudo tail -f /var/log/ovirt-engine/engine.log
+Press Ctrl+C to exit the log viewing.
+
+Subtask 1.2: Configure Basic RHVM Settings
+Access the RHVM configuration tool:
+sudo engine-config --help
+Set the administrator email (replace with your email):
+sudo engine-config -s AdminEmail=admin@example.com
+Configure the maximum number of concurrent connections:
+sudo engine-config -s MaxNumberOfHostsInStoragePool=200
+Set the default cluster CPU type (adjust based on your hardware):
+sudo engine-config -s DefaultClusterCpuType=Intel Nehalem Family
+Restart the RHVM engine to apply configuration changes:
+sudo systemctl restart ovirt-engine
+Wait for the service to fully start (this may take 2-3 minutes):
+sudo systemctl status ovirt-engine
+Subtask 1.3: Configure Firewall Rules
+Check current firewall status:
+sudo firewall-cmd --state
+Add RHVM services to firewall (if not already configured):
+sudo firewall-cmd --permanent --add-service=ovirt-engine
+sudo firewall-cmd --permanent --add-port=443/tcp
+sudo firewall-cmd --permanent --add-port=80/tcp
+sudo firewall-cmd --permanent --add-port=6100/tcp
+Reload firewall configuration:
+sudo firewall-cmd --reload
+Verify firewall rules:
+sudo firewall-cmd --list-all
+Task 2: Set Up Necessary Environment Variables
+Subtask 2.1: Create RHVM Environment Configuration
+Create a directory for RHVM scripts:
+mkdir -p ~/rhvm-config
+cd ~/rhvm-config
+Create an environment configuration file:
+cat > rhvm-env.sh << 'EOF'
+#!/bin/bash
+# RHVM Environment Configuration
+
+# RHVM Server Details
+export RHVM_SERVER=$(hostname -f)
+export RHVM_PORT=443
+export RHVM_URL="https://${RHVM_SERVER}:${RHVM_PORT}/ovirt-engine"
+
+# Administrative Credentials
+export RHVM_ADMIN_USER="admin@internal"
+export RHVM_ADMIN_DOMAIN="internal"
+
+# API Configuration
+export RHVM_API_URL="${RHVM_URL}/api"
+export RHVM_CA_FILE="/etc/pki/ovirt-engine/ca.pem"
+
+# Default Settings
+export RHVM_DEFAULT_DC="Default"
+export RHVM_DEFAULT_CLUSTER="Default"
+
+# Display current configuration
+echo "RHVM Environment Variables Set:"
+echo "Server: $RHVM_SERVER"
+echo "URL: $RHVM_URL"
+echo "API URL: $RHVM_API_URL"
+echo "Admin User: $RHVM_ADMIN_USER"
+EOF
+Make the script executable:
+chmod +x rhvm-env.sh
+Source the environment variables:
+source rhvm-env.sh
+Subtask 2.2: Create Persistent Environment Setup
+Add environment variables to bash profile:
+echo "# RHVM Environment Variables" >> ~/.bashrc
+echo "source ~/rhvm-config/rhvm-env.sh" >> ~/.bashrc
+Create a system-wide environment file (optional, for system administrators):
+sudo cat > /etc/profile.d/rhvm.sh << 'EOF'
+# RHVM System Environment Variables
+export RHVM_SERVER=$(hostname -f)
+export RHVM_URL="https://${RHVM_SERVER}:443/ovirt-engine"
+export RHVM_API_URL="${RHVM_URL}/api"
+EOF
+Verify environment variables are set:
+echo "RHVM Server: $RHVM_SERVER"
+echo "RHVM URL: $RHVM_URL"
+echo "RHVM API URL: $RHVM_API_URL"
+Subtask 2.3: Install and Configure RHVM CLI Tools
+Install the oVirt Python SDK (if not already installed):
+sudo dnf install -y python3-ovirt-engine-sdk4
+Install additional CLI tools:
+sudo dnf install -y ovirt-engine-cli
+Create a CLI configuration file:
+mkdir -p ~/.ovirtshellrc
+cat > ~/.ovirtshellrc << EOF
+[ovirt-shell]
+username = admin@internal
+url = https://$(hostname -f):443/ovirt-engine/api
+insecure = False
+filter = False
+session_timeout = 3600
+EOF
+Task 3: Confirm Connectivity with RHVM through CLI and Web Console
+Subtask 3.1: Test Web Console Connectivity
+Get the RHVM server IP address:
+ip addr show | grep inet | grep -v 127.0.0.1 | grep -v ::1
+Test web server connectivity:
+curl -k -I https://$(hostname -f):443/ovirt-engine/
+Check SSL certificate:
+openssl s_client -connect $(hostname -f):443 -servername $(hostname -f) < /dev/null
+Create a simple connectivity test script:
+cat > test-web-connectivity.sh << 'EOF'
+#!/bin/bash
+echo "Testing RHVM Web Console Connectivity..."
+echo "Server: $(hostname -f)"
+echo "Testing HTTPS connection..."
+
+if curl -k -s --connect-timeout 10 https://$(hostname -f):443/ovirt-engine/ > /dev/null; then
+    echo "✓ Web console is accessible"
+    echo "Access URL: https://$(hostname -f):443/ovirt-engine/"
+else
+    echo "✗ Web console is not accessible"
+    echo "Check firewall and service status"
+fi
+EOF
+
+chmod +x test-web-connectivity.sh
+./test-web-connectivity.sh
+Subtask 3.2: Test CLI Connectivity
+Create a Python script to test API connectivity:
+cat > test-api-connectivity.py << 'EOF'
+#!/usr/bin/env python3
+
+import ovirtsdk4 as sdk
+import ovirtsdk4.types as types
+import sys
+import os
+
+# Get server details from environment
+server_url = os.environ.get('RHVM_URL', 'https://localhost:443/ovirt-engine')
+username = os.environ.get('RHVM_ADMIN_USER', 'admin@internal')
+
+print(f"Testing RHVM API connectivity...")
+print(f"Server URL: {server_url}")
+print(f"Username: {username}")
+
+try:
+    # Note: In a real environment, you would use proper authentication
+    # For this lab, we'll test the connection endpoint
+    print("Attempting to connect to RHVM API...")
+    
+    # Create connection (this will prompt for password in real scenario)
+    connection = sdk.Connection(
+        url=f"{server_url}/api",
+        username=username,
+        # password='your_password',  # In production, use secure password handling
+        insecure=True,  # Only for lab environment
+    )
+    
+    # Test the connection by getting system information
+    system_service = connection.system_service()
+    api_info = system_service.get()
+    
+    print(f"✓ Successfully connected to RHVM API")
+    print(f"Product: {api_info.product_info.name}")
+    print(f"Version: {api_info.product_info.version.full_version}")
+    
+    # Close the connection
+    connection.close()
+    
+except Exception as e:
+    print(f"✗ Failed to connect to RHVM API: {str(e)}")
+    print("This is expected in the lab environment without proper credentials")
+    sys.exit(1)
+EOF
+
+chmod +x test-api-connectivity.py
+Run the API connectivity test:
+python3 test-api-connectivity.py
+Note: This test may fail without proper authentication credentials, which is expected in a lab environment.
+
+Subtask 3.3: Create Administrative Scripts
+Create a system status check script:
+cat > rhvm-status.sh << 'EOF'
+#!/bin/bash
+echo "=== RHVM System Status Check ==="
+echo "Date: $(date)"
+echo "Server: $(hostname -f)"
+echo ""
+
+echo "1. Service Status:"
+services=("ovirt-engine" "postgresql" "httpd")
+for service in "${services[@]}"; do
+    if systemctl is-active --quiet $service; then
+        echo "   ✓ $service: Running"
+    else
+        echo "   ✗ $service: Not Running"
+    fi
+done
+
+echo ""
+echo "2. Network Connectivity:"
+if ss -tlnp | grep -q ":443"; then
+    echo "   ✓ HTTPS port 443: Listening"
+else
+    echo "   ✗ HTTPS port 443: Not Listening"
+fi
+
+echo ""
+echo "3. Disk Space:"
+df -h / | tail -1 | awk '{print "   Root filesystem: " $5 " used"}'
+
+echo ""
+echo "4. Memory Usage:"
+free -h | grep Mem | awk '{print "   Memory: " $3 "/" $2 " used"}'
+
+echo ""
+echo "5. Load Average:"
+uptime | awk -F'load average:' '{print "   Load:" $2}'
+EOF
+
+chmod +x rhvm-status.sh
+./rhvm-status.sh
+Create a log monitoring script:
+cat > monitor-rhvm-logs.sh << 'EOF'
+#!/bin/bash
+echo "=== RHVM Log Monitor ==="
+echo "Monitoring RHVM engine logs (Press Ctrl+C to stop)"
+echo ""
+
+# Function to display colored output
+print_log_line() {
+    local line="$1"
+    if echo "$line" | grep -qi error; then
+        echo -e "\033[31m$line\033[0m"  # Red for errors
+    elif echo "$line" | grep -qi warn; then
+        echo -e "\033[33m$line\033[0m"  # Yellow for warnings
+    elif echo "$line" | grep -qi info; then
+        echo -e "\033[32m$line\033[0m"  # Green for info
+    else
+        echo "$line"
+    fi
+}
+
+# Monitor the main engine log
+tail -f /var/log/ovirt-engine/engine.log | while read line; do
+    print_log_line "$line"
+done
+EOF
+
+chmod +x monitor-rhvm-logs.sh
+Subtask 3.4: Verify Web Console Access
+Display access information:
+cat > display-access-info.sh << 'EOF'
+#!/bin/bash
+echo "=== RHVM Access Information ==="
+echo ""
+echo "Web Console Access:"
+echo "URL: https://$(hostname -f):443/ovirt-engine/"
+echo "Default Username: admin@internal"
+echo "Default Password: [Set during installation]"
+echo ""
+echo "Server Details:"
+echo "Hostname: $(hostname -f)"
+echo "IP Address: $(hostname -I | awk '{print $1}')"
+echo ""
+echo "SSL Certificate Information:"
+echo "Certificate file: /etc/pki/ovirt-engine/certs/apache.cer"
+echo "CA Certificate: /etc/pki/ovirt-engine/ca.pem"
+echo ""
+echo "To access the web console:"
+echo "1. Open a web browser"
+echo "2. Navigate to: https://$(hostname -f):443/ovirt-engine/"
+echo "3. Accept the SSL certificate (if prompted)"
+echo "4. Login with admin@internal and your password"
+EOF
+
+chmod +x display-access-info.sh
+./display-access-info.sh
+Troubleshooting Common Issues
+Issue 1: Service Not Starting
+If RHVM services fail to start:
+
+# Check service logs
+sudo journalctl -u ovirt-engine -f
+
+# Check for port conflicts
+sudo ss -tlnp | grep -E "(443|80)"
+
+# Restart services in order
+sudo systemctl restart postgresql
+sudo systemctl restart httpd
+sudo systemctl restart ovirt-engine
+Issue 2: Web Console Not Accessible
+If you cannot access the web console:
+
+# Check firewall status
+sudo firewall-cmd --list-all
+
+# Verify Apache configuration
+sudo httpd -t
+
+# Check SSL certificates
+sudo openssl x509 -in /etc/pki/ovirt-engine/certs/apache.cer -text -noout
+Issue 3: Environment Variables Not Persistent
+If environment variables are not loading:
+
+# Check bash profile
+cat ~/.bashrc | grep rhvm
+
+# Manually source the environment
+source ~/rhvm-config/rhvm-env.sh
+
+# Verify variables are set
+env | grep RHVM
+Verification Steps
+Before concluding the lab, verify your configuration:
+
+Run the system status check:
+./rhvm-status.sh
+Test web connectivity:
+./test-web-connectivity.sh
+Verify environment variables:
+source rhvm-env.sh
+Check all created scripts:
+ls -la ~/rhvm-config/
+ls -la ~/*.sh
+Conclusion
+In this lab, you have successfully completed the post-installation configuration of Red Hat Virtualization Manager (RHVM). You have accomplished the following key tasks:
+
+Configuration Achievements:
+
+Configured RHVM environment settings including administrator email, connection limits, and CPU types
+Set up proper firewall rules to ensure secure access to RHVM services
+Verified that all essential RHVM services are running correctly
+Environment Setup:
+
+Created comprehensive environment variables for RHVM administration
+Established persistent environment configuration that loads automatically
+Installed and configured CLI tools for command-line management
+Created reusable scripts for system administration
+Connectivity Verification:
+
+Confirmed web console accessibility through HTTPS
+Tested API connectivity using Python SDK
+Created monitoring and status checking scripts
+Established proper access credentials and SSL certificate handling
+Why This Matters: This configuration is crucial for production virtualization environments because it:
+
+Ensures secure and reliable access to the RHVM management interface
+Provides administrators with efficient command-line tools for automation
+Establishes proper monitoring and troubleshooting capabilities
+Creates a foundation for managing virtual machines, storage, and networking
+You now have a fully configured RHVM environment ready for creating and managing virtual infrastructure. The scripts and configurations you've created will serve as valuable tools for ongoing administration and troubleshooting of your virtualization environment.
+
+Next Steps: With RHVM properly configured, you're ready to proceed to adding hosts, configuring storage domains, and creating your first virtual machines in subsequent labs.
