@@ -1,0 +1,307 @@
+Lab 9: Configuring Storage Domains
+Objectives
+By the end of this lab, students will be able to:
+
+Understand the concept and importance of storage domains in Red Hat Virtualization Manager (RHVM)
+Configure and set up NFS storage domains for virtualization environments
+Attach storage domains to Red Hat Virtualization Host (RHVH) systems
+Verify storage domain functionality through the RHVM web interface
+Troubleshoot common storage domain configuration issues
+Implement best practices for storage domain management in enterprise environments
+Prerequisites
+Before starting this lab, students should have:
+
+Basic understanding of Linux command line operations
+Familiarity with Red Hat Virtualization concepts
+Knowledge of NFS (Network File System) fundamentals
+Understanding of virtualization storage concepts
+Basic networking knowledge including IP addressing and DNS
+Completed previous RHVM labs or equivalent experience
+Lab Environment
+Al Nafi Cloud Machines: This lab uses pre-configured Linux-based cloud machines provided by Al Nafi. Simply click Start Lab to access your environment - no need to build your own virtual machines.
+
+Your lab environment includes:
+
+RHVM Manager node (pre-installed and configured)
+RHVH Host nodes (2 hosts minimum)
+NFS Server node (CentOS/RHEL 8)
+Network connectivity between all nodes
+Task 1: Configure an NFS Storage Domain
+Subtask 1.1: Prepare the NFS Server
+First, we need to set up an NFS server that will provide shared storage for our virtualization environment.
+
+Step 1: Access the NFS Server Node
+# Connect to your NFS server node
+ssh root@nfs-server-ip
+Step 2: Install NFS Server Packages
+# Update the system
+dnf update -y
+
+# Install NFS utilities
+dnf install -y nfs-utils rpcbind
+Step 3: Create Storage Directories
+# Create directories for different storage domains
+mkdir -p /exports/data
+mkdir -p /exports/iso
+mkdir -p /exports/export
+
+# Set proper ownership and permissions
+chown -R 36:36 /exports/data
+chown -R 36:36 /exports/iso
+chown -R 36:36 /exports/export
+
+chmod -R 755 /exports
+Note: The user ID 36 corresponds to the vdsm user in RHVH, which is required for proper access.
+
+Step 4: Configure NFS Exports
+# Create NFS exports configuration
+cat > /etc/exports << 'EOF'
+/exports/data *(rw,sync,no_root_squash,no_all_squash)
+/exports/iso *(rw,sync,no_root_squash,no_all_squash)
+/exports/export *(rw,sync,no_root_squash,no_all_squash)
+EOF
+Step 5: Start and Enable NFS Services
+# Enable and start rpcbind service
+systemctl enable --now rpcbind
+
+# Enable and start NFS server
+systemctl enable --now nfs-server
+
+# Export the NFS shares
+exportfs -ra
+
+# Verify exports
+exportfs -v
+Subtask 1.2: Configure Firewall for NFS
+Step 1: Configure Firewall Rules
+# Add NFS services to firewall
+firewall-cmd --permanent --add-service=nfs
+firewall-cmd --permanent --add-service=rpc-bind
+firewall-cmd --permanent --add-service=mountd
+
+# Add specific ports for NFS
+firewall-cmd --permanent --add-port=2049/tcp
+firewall-cmd --permanent --add-port=2049/udp
+firewall-cmd --permanent --add-port=111/tcp
+firewall-cmd --permanent --add-port=111/udp
+
+# Reload firewall configuration
+firewall-cmd --reload
+
+# Verify firewall rules
+firewall-cmd --list-all
+Subtask 1.3: Test NFS Connectivity
+Step 1: Test from RHVH Hosts
+# From each RHVH host, test NFS connectivity
+showmount -e nfs-server-ip
+
+# Expected output should show the exported directories
+# Example: /exports/data *
+#          /exports/iso *
+#          /exports/export *
+Task 2: Attach Storage Domains to RHVH Hosts
+Subtask 2.1: Access RHVM Web Interface
+Step 1: Login to RHVM Manager
+Open a web browser and navigate to your RHVM Manager URL
+Login with administrator credentials
+Navigate to the Storage → Domains section
+Subtask 2.2: Create Data Storage Domain
+Step 1: Add New Storage Domain
+Click New button in the Storage Domains view
+Fill in the following details:
+General Tab:
+
+Name: nfs-data-domain
+Description: Primary data storage domain
+Domain Function: Data
+Storage Type: NFS
+Format: V4 (recommended for new installations)
+Storage Details:
+
+Export Path: /exports/data
+Server: nfs-server-ip (replace with actual IP)
+Advanced Parameters: Leave default values
+Step 2: Configure Advanced Options
+# Optional: Set mount options for better performance
+# In the Advanced Parameters section, you can add:
+# Mount Options: vers=4,minorversion=1,proto=tcp
+Step 3: Complete Storage Domain Creation
+Click OK to create the storage domain
+Wait for the domain to be created and activated
+Monitor the Events tab for any errors
+Subtask 2.3: Create ISO Storage Domain
+Step 1: Add ISO Domain
+Click New button again
+Configure the ISO domain:
+General Tab:
+
+Name: nfs-iso-domain
+Description: ISO images storage domain
+Domain Function: ISO
+Storage Type: NFS
+Storage Details:
+
+Export Path: /exports/iso
+Server: nfs-server-ip
+Step 2: Activate ISO Domain
+Click OK to create the domain
+The ISO domain should automatically attach to the data center
+Subtask 2.4: Create Export Storage Domain
+Step 1: Add Export Domain
+Click New button
+Configure the export domain:
+General Tab:
+
+Name: nfs-export-domain
+Description: VM export storage domain
+Domain Function: Export
+Storage Type: NFS
+Storage Details:
+
+Export Path: /exports/export
+Server: nfs-server-ip
+Task 3: Verify Storage Domain Functionality
+Subtask 3.1: Check Storage Domain Status
+Step 1: Verify Domain Activation
+Navigate to Storage → Domains
+Verify all three domains show status Up
+Check the Free Space column shows available storage
+Step 2: View Domain Details
+Click on each storage domain name
+Review the General tab for configuration details
+Check the Data Center tab to confirm attachment
+Subtask 3.2: Test Storage Domain Functionality
+Step 1: Upload ISO Image
+Navigate to Storage → Domains
+Click on the ISO domain (nfs-iso-domain)
+Go to Images tab
+Click Upload and select a small ISO file for testing
+Step 2: Create Test Disk
+Navigate to Storage → Disks
+Click New
+Configure a test disk:
+Size: 1 GB
+Storage Domain: nfs-data-domain
+Description: Test disk for storage verification
+Click OK to create the disk
+Subtask 3.3: Monitor Storage Performance
+Step 1: Check Storage Metrics
+# On the NFS server, monitor NFS statistics
+nfsstat -s
+
+# Check disk usage
+df -h /exports/*
+
+# Monitor NFS connections
+ss -tuln | grep :2049
+Step 2: Verify Host Connectivity
+Navigate to Compute → Hosts
+Select each RHVH host
+Go to Storage tab
+Verify all storage domains are accessible
+Subtask 3.4: Test Storage Domain Operations
+Step 1: Create VM with Storage
+Navigate to Compute → Virtual Machines
+Click New
+Create a basic VM configuration:
+Name: storage-test-vm
+Operating System: Red Hat Enterprise Linux 8.x x64
+Instance Images: Select from ISO domain
+Instance Type: Small
+Step 2: Verify Disk Creation
+In the VM creation wizard, go to System tab
+Verify the boot disk is created on the data storage domain
+Complete VM creation
+Troubleshooting Common Issues
+Issue 1: Storage Domain Creation Fails
+Symptoms: Domain creation fails with permission errors
+
+Solution:
+
+# On NFS server, check and fix permissions
+chown -R 36:36 /exports/data
+chmod -R 755 /exports/data
+
+# Restart NFS services
+systemctl restart nfs-server
+exportfs -ra
+Issue 2: NFS Mount Fails
+Symptoms: Cannot mount NFS shares from RHVH hosts
+
+Solution:
+
+# Check NFS server firewall
+firewall-cmd --list-services | grep nfs
+
+# Test manual mount from RHVH host
+mount -t nfs4 nfs-server-ip:/exports/data /mnt/test
+Issue 3: Storage Domain Shows as Inactive
+Symptoms: Storage domain appears but shows inactive status
+
+Solution:
+
+Check network connectivity between RHVM and NFS server
+Verify NFS exports are accessible
+Check RHVM engine logs: /var/log/ovirt-engine/engine.log
+Issue 4: Performance Issues
+Symptoms: Slow storage operations
+
+Solution:
+
+# Optimize NFS mount options in RHVM
+# Use: vers=4,minorversion=1,proto=tcp,fsc
+
+# On NFS server, tune NFS daemon
+echo 'RPCNFSDCOUNT=16' >> /etc/sysconfig/nfs
+systemctl restart nfs-server
+Best Practices
+Storage Domain Management
+Separate Storage Types: Use different storage domains for data, ISO, and export functions
+Monitor Space: Regularly check storage domain capacity and plan for growth
+Backup Strategy: Implement regular backups of critical storage domains
+Performance Tuning: Optimize NFS settings for your workload requirements
+Security Considerations
+Network Security: Use dedicated storage networks when possible
+Access Control: Implement proper NFS export restrictions
+Encryption: Consider NFS over TLS for sensitive environments
+Maintenance Tasks
+# Regular maintenance script for NFS server
+#!/bin/bash
+# Check NFS service status
+systemctl status nfs-server
+
+# Monitor disk usage
+df -h /exports/*
+
+# Check NFS statistics
+nfsstat -s
+
+# Verify exports
+exportfs -v
+Verification Checklist
+Before completing this lab, ensure you have:
+
+ Successfully configured NFS server with proper exports
+ Created data, ISO, and export storage domains
+ Verified all storage domains show Up status
+ Tested storage domain functionality by creating a disk
+ Confirmed RHVH hosts can access all storage domains
+ Uploaded a test ISO image to the ISO domain
+ Created a test VM using the configured storage
+ Verified storage performance and connectivity
+Conclusion
+In this lab, you have successfully configured and managed storage domains in Red Hat Virtualization Manager. You learned how to:
+
+Set up NFS Storage: Configured a robust NFS server with proper security and performance settings
+Create Storage Domains: Established data, ISO, and export storage domains for different virtualization needs
+Integrate with RHVH: Successfully attached storage domains to virtualization hosts
+Verify Functionality: Tested storage operations and confirmed proper integration
+Why This Matters: Storage domains are the foundation of any virtualization environment. Proper storage configuration ensures:
+
+High Availability: VMs can migrate between hosts seamlessly
+Performance: Optimized storage settings improve VM performance
+Scalability: Well-designed storage architecture supports environment growth
+Data Protection: Proper storage management enables backup and disaster recovery
+These skills are essential for the Red Hat Certified Specialist in Virtualization exam and real-world virtualization deployments. Understanding storage domain configuration enables you to build robust, scalable virtualization infrastructures that meet enterprise requirements.
+
+Next Steps: Consider exploring advanced storage topics such as storage live migration, storage domain maintenance modes, and integration with enterprise storage solutions like GlusterFS or Ceph.
