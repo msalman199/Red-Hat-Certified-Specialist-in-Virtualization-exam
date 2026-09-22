@@ -1,0 +1,432 @@
+Lab 7: Creating and Managing Datacenters in RHVM
+Objectives
+By the end of this lab, students will be able to:
+
+Understand the concept and importance of datacenters in Red Hat Virtualization Manager (RHVM)
+Create and configure a new datacenter in RHVM environment
+Configure storage domains and networking components for the datacenter
+Verify datacenter configuration and monitor health status
+Troubleshoot common datacenter configuration issues
+Apply best practices for datacenter management in enterprise environments
+Prerequisites
+Before starting this lab, students should have:
+
+Basic understanding of virtualization concepts
+Familiarity with Linux command line interface
+Knowledge of networking fundamentals (IP addressing, VLANs, subnets)
+Understanding of storage concepts (NFS, iSCSI, local storage)
+Completion of previous RHVM installation and basic configuration labs
+Access to RHVM web administration portal
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines with RHVM already installed and ready to use. Simply click Start Lab to access your environment - no need to build your own virtual machines or install software.
+
+Your lab environment includes:
+
+RHVM Manager server (rhvm-manager.lab.local)
+Two virtualization hosts (rhvh-host1.lab.local, rhvh-host2.lab.local)
+Storage server with NFS shares configured
+Network infrastructure with appropriate VLANs
+Task 1: Create a New Datacenter in RHVM
+A datacenter in RHVM is a logical container that groups clusters, hosts, and storage domains. It defines the compatibility level and shared resources for your virtualization environment.
+
+Subtask 1.1: Access RHVM Administration Portal
+Open your web browser and navigate to the RHVM Manager URL:
+
+https://rhvm-manager.lab.local/ovirt-engine
+Log in using the administrator credentials:
+
+Username: admin
+Password: RedHat123!
+Domain: internal
+Once logged in, you will see the main RHVM dashboard with various tabs including Compute, Storage, Network, and Administration.
+
+Subtask 1.2: Navigate to Datacenter Management
+Click on the Compute tab in the main navigation menu.
+
+In the left sidebar, click on Data Centers to view existing datacenters.
+
+You should see the Default datacenter that was created during RHVM installation.
+
+Subtask 1.3: Create New Datacenter
+Click the New button to create a new datacenter.
+
+In the New Data Center dialog box, configure the following settings:
+
+General Tab:
+
+Name: Production-DC
+Description: Production Datacenter for Enterprise Workloads
+Comment: Created for Lab 7 - Datacenter Management
+Compatibility Version: Select the latest available version (typically 4.7)
+Quota Mode: Disabled (for this lab)
+Advanced Parameters:
+
+MAC Address Pool: Leave as default
+Additional Random Number Generator source: Leave unchecked
+Click OK to create the datacenter.
+
+The new datacenter will appear in the datacenters list with status Uninitialized.
+
+Subtask 1.4: Verify Datacenter Creation
+Select the newly created Production-DC datacenter from the list.
+
+Review the datacenter details in the bottom panel:
+
+General tab shows basic information
+Storage tab shows attached storage domains (currently empty)
+Networks tab shows network configuration
+Clusters tab shows associated clusters (currently empty)
+Note the datacenter status is Uninitialized because no storage domain has been attached yet.
+
+Task 2: Configure Storage and Networking for the Datacenter
+Subtask 2.1: Create and Attach Storage Domain
+Storage domains provide the storage resources for virtual machines and templates in the datacenter.
+
+Step 1: Create NFS Storage Domain
+Navigate to Storage > Domains in the left sidebar.
+
+Click New to create a new storage domain.
+
+Configure the storage domain with the following settings:
+
+General Tab:
+
+Name: Production-Data-Storage
+Description: Primary data storage for Production datacenter
+Domain Function: Data
+Storage Type: NFS
+Format: V5
+Host: Select any available host from the dropdown
+Storage Connection:
+
+Export Path: /storage/data
+Server: storage-server.lab.local
+Advanced Parameters: Leave as default
+Click OK to create the storage domain.
+
+Wait for the storage domain to become Active (this may take a few minutes).
+
+Step 2: Attach Storage Domain to Datacenter
+Go back to Compute > Data Centers.
+
+Select Production-DC datacenter.
+
+In the bottom panel, click on the Storage tab.
+
+Click Attach Data button.
+
+Select Production-Data-Storage from the list of available storage domains.
+
+Click OK to attach the storage domain.
+
+The datacenter status should change from Uninitialized to Up once the storage domain is successfully attached.
+
+Step 3: Create ISO Storage Domain (Optional)
+Create another storage domain for ISO images:
+
+Name: Production-ISO-Storage
+Domain Function: ISO
+Storage Type: NFS
+Export Path: /storage/iso
+Server: storage-server.lab.local
+Attach this ISO domain to the Production-DC datacenter following the same process.
+
+Subtask 2.2: Configure Networking
+Step 1: Create Logical Networks
+Navigate to Network > Networks in the left sidebar.
+
+Click New to create a new logical network.
+
+Configure the first network:
+
+General Tab:
+
+Name: Production-VM-Network
+Description: Primary VM network for production workloads
+Data Center: Production-DC
+Network Label: Leave empty
+Comment: Production VM network
+Cluster Tab:
+
+Check Attach/Detach Network to/from Clusters in Data Center
+Select clusters when they become available
+vNIC Profiles Tab:
+
+Name: Production-VM-Profile
+Description: Default profile for production VMs
+Click OK to create the network.
+
+Create a second network for management:
+
+Name: Production-Mgmt-Network
+Description: Management network for production environment
+Data Center: Production-DC
+Step 2: Verify Network Configuration
+Go to Compute > Data Centers and select Production-DC.
+
+Click on the Networks tab in the bottom panel.
+
+Verify that both networks appear in the list:
+
+ovirtmgmt (default management network)
+Production-VM-Network
+Production-Mgmt-Network
+Subtask 2.3: Create and Configure Cluster
+A cluster is a group of hosts that share the same storage domains and have the same type of CPU.
+
+Step 1: Create New Cluster
+Navigate to Compute > Clusters.
+
+Click New to create a new cluster.
+
+Configure the cluster settings:
+
+General Tab:
+
+Data Center: Production-DC
+Name: Production-Cluster
+Description: Production cluster for enterprise workloads
+Comment: Created for Lab 7
+Management Network: ovirtmgmt
+CPU Type: Select appropriate CPU type for your environment
+Compatibility Version: Match the datacenter version
+Optimization Tab:
+
+Memory Optimization: None (for this lab)
+CPU Threads: Leave as default
+Memory Balloon: Enable
+KSM Control: Leave as default
+Migration Policy Tab:
+
+Migration Policy: Minimal downtime
+Migration Bandwidth: Auto
+Resilience Policy: Migrate Virtual Machines
+Scheduling Policy Tab:
+
+Select Policy: evenly_distributed
+Enable Trusted Service: Unchecked
+Enable HA Reservation: Unchecked
+Click OK to create the cluster.
+
+Step 2: Configure Cluster Networks
+Select the newly created Production-Cluster.
+
+In the bottom panel, click on the Logical Networks tab.
+
+Click Manage Networks button.
+
+Configure network assignments:
+
+ovirtmgmt: Required, Migration Network, Management Network
+Production-VM-Network: Required, VM Network
+Production-Mgmt-Network: Optional, Management Network
+Click OK to save network configuration.
+
+Task 3: Verify Datacenter Configuration and Health
+Subtask 3.1: Check Datacenter Status
+Navigate to Compute > Data Centers.
+
+Verify that Production-DC shows status Up with a green icon.
+
+Click on Production-DC to view detailed information:
+
+General Tab Information:
+
+Status should be Up
+Compatibility Version should match your selection
+Storage Pool Manager should be assigned
+Storage Tab:
+
+Production-Data-Storage should show as Active
+Production-ISO-Storage should show as Active (if created)
+Available space should be displayed
+Networks Tab:
+
+All configured networks should be listed
+Network status should be Operational
+Clusters Tab:
+
+Production-Cluster should be listed
+Cluster status should be Up
+Subtask 3.2: Monitor Storage Health
+Go to Storage > Domains.
+
+Select Production-Data-Storage.
+
+Review storage domain details:
+
+Status: Should be Active
+Available Space: Check available capacity
+Used Space: Monitor usage
+Storage Type: Verify NFS configuration
+In the bottom panel, check the Data Center tab to confirm attachment to Production-DC.
+
+Click on the Disks tab to view any existing virtual disks (should be empty for new storage).
+
+Subtask 3.3: Verify Network Configuration
+Navigate to Network > Networks.
+
+For each network created (Production-VM-Network, Production-Mgmt-Network):
+
+Status should be Operational
+Data Center should show Production-DC
+Provider should show ovirt-provider-ovn or None
+Click on Production-VM-Network and review:
+
+General Tab:
+
+Network details and description
+VLAN tagging configuration
+MTU settings
+Clusters Tab:
+
+Should show Production-Cluster as attached
+Network status in cluster should be Operational
+vNIC Profiles Tab:
+
+Production-VM-Profile should be listed
+Profile should be enabled
+Subtask 3.4: Test Datacenter Functionality
+Step 1: Create Test Virtual Machine (Optional)
+Navigate to Compute > Virtual Machines.
+
+Click New to create a test VM:
+
+Name: test-vm-dc
+Cluster: Production-Cluster
+Operating System: Linux
+Instance Type: Small
+Optimized for: Server
+Configure VM resources:
+
+Memory: 1024 MB
+CPUs: 1
+First Device: Hard Disk
+Size: 10 GB
+Storage Domain: Production-Data-Storage
+In the Network Interfaces tab:
+
+Name: nic1
+Network: Production-VM-Network
+Profile: Production-VM-Profile
+Click OK to create the VM (do not start it for this lab).
+
+Step 2: Verify Resource Allocation
+Go back to Compute > Data Centers and select Production-DC.
+
+Check resource utilization:
+
+Storage: Verify disk space allocation
+Networks: Confirm network assignments
+Clusters: Check cluster resource availability
+Subtask 3.5: Generate Datacenter Health Report
+Navigate to Administration > Configure.
+
+Click on Roles to verify permissions are properly configured.
+
+Go to Events to check for any warnings or errors related to the datacenter:
+
+Look for events related to Production-DC
+Check for storage domain events
+Review network configuration events
+Document any issues found and their resolution status.
+
+Troubleshooting Common Issues
+Issue 1: Datacenter Remains Uninitialized
+Symptoms: Datacenter status shows Uninitialized even after creation.
+
+Solution:
+
+Verify that at least one storage domain is attached to the datacenter
+Check storage domain status - it must be Active
+Ensure NFS server is accessible and export paths are correct
+Verify firewall settings on storage server
+Commands to verify NFS connectivity:
+
+# Test NFS mount from RHVM host
+showmount -e storage-server.lab.local
+mount -t nfs storage-server.lab.local:/storage/data /mnt/test
+Issue 2: Storage Domain Activation Fails
+Symptoms: Storage domain shows Inactive or Unknown status.
+
+Solution:
+
+Check NFS server status:
+systemctl status nfs-server
+systemctl status rpcbind
+Verify export configuration:
+cat /etc/exports
+exportfs -v
+Check network connectivity:
+ping storage-server.lab.local
+telnet storage-server.lab.local 2049
+Issue 3: Network Configuration Problems
+Symptoms: Networks show Non-operational status or VMs cannot communicate.
+
+Solution:
+
+Verify VLAN configuration if using tagged networks
+Check physical network connectivity
+Ensure proper network labels on hosts
+Verify firewall rules allow required traffic
+Best Practices for Datacenter Management
+Performance Optimization
+Storage Configuration:
+
+Use dedicated storage networks when possible
+Implement storage multipathing for redundancy
+Monitor storage performance regularly
+Network Design:
+
+Separate management, storage, and VM traffic
+Use appropriate VLAN segmentation
+Implement network bonding for high availability
+Resource Planning:
+
+Plan for growth in storage and compute resources
+Implement proper backup strategies
+Monitor resource utilization trends
+Security Considerations
+Access Control:
+
+Implement role-based access control (RBAC)
+Use strong authentication mechanisms
+Regular audit of user permissions
+Network Security:
+
+Implement network segmentation
+Use firewalls to control traffic flow
+Enable encryption for sensitive communications
+Conclusion
+In this lab, you have successfully accomplished the following key objectives:
+
+What You Learned:
+
+Created and configured a new datacenter in RHVM environment
+Attached and configured storage domains for virtual machine data and ISO images
+Set up logical networks and network profiles for VM connectivity
+Created and configured a cluster within the datacenter
+Verified datacenter health and functionality through comprehensive testing
+Implemented best practices for datacenter management and troubleshooting
+Why This Matters: Datacenters are the foundation of any virtualization infrastructure. Proper datacenter configuration ensures:
+
+Scalability: Ability to grow your virtual infrastructure as business needs expand
+Performance: Optimal resource utilization and VM performance
+Reliability: High availability and disaster recovery capabilities
+Security: Proper isolation and access control for enterprise workloads
+Management: Centralized control and monitoring of virtualization resources
+Real-World Applications: The skills you've developed in this lab are directly applicable to:
+
+Enterprise virtualization deployments
+Private cloud infrastructure management
+Disaster recovery site configuration
+Development and testing environment setup
+Hybrid cloud integration scenarios
+Next Steps: With your datacenter properly configured, you can now proceed to:
+
+Add physical hosts to your cluster
+Deploy virtual machines and templates
+Implement advanced networking features
+Configure backup and disaster recovery solutions
+Set up monitoring and alerting systems
+This foundational knowledge prepares you for the Red Hat Certified Specialist in Virtualization exam and real-world enterprise virtualization management scenarios.
