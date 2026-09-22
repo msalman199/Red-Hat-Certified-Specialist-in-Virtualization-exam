@@ -1,0 +1,389 @@
+Lab 5: Registering RHVH with RHVM
+Objectives
+By the end of this lab, you will be able to:
+
+Register RHVH (Red Hat Virtualization Host) with RHVM (Red Hat Virtualization Manager) for centralized management
+Verify host registration status using both web console and command-line interface
+Monitor RHVH status from the RHVM management interface
+Understand the relationship between RHVH and RHVM in a virtualization environment
+Troubleshoot common registration issues that may occur during the process
+Prerequisites
+Before starting this lab, you should have:
+
+Basic understanding of Linux command line operations
+Familiarity with Red Hat Enterprise Linux administration
+Knowledge of virtualization concepts and terminology
+Understanding of network configuration basics
+Previous experience with RHVM installation (covered in earlier labs)
+Access to both RHVM and RHVH systems with appropriate privileges
+Required Knowledge Areas
+Linux system administration fundamentals
+Network connectivity troubleshooting
+SSH key management and authentication
+Web browser navigation and form completion
+Basic understanding of hypervisor technology
+Lab Environment Setup
+Al Nafi Cloud Lab Environment: This lab uses Al Nafi's pre-configured Linux-based cloud machines. Simply click Start Lab to access your ready-to-use environment. No need to build your own virtual machines or configure complex networking.
+
+Provided Resources
+RHVM Server: Pre-installed Red Hat Virtualization Manager
+RHVH Host: Red Hat Virtualization Host ready for registration
+Network Configuration: Pre-configured networking between systems
+Administrative Access: Root privileges on both systems
+Task 1: Add RHVH Instance to RHVM
+Subtask 1.1: Prepare the RHVH Host
+First, we need to ensure the RHVH host is properly configured and ready for registration.
+
+Step 1: Access the RHVH Host
+Connect to your RHVH host using SSH:
+
+ssh root@rhvh-host-ip
+Step 2: Verify Network Connectivity
+Test connectivity to the RHVM server:
+
+ping -c 4 rhvm-server-ip
+Expected output should show successful ping responses.
+
+Step 3: Check RHVH Service Status
+Verify that essential RHVH services are running:
+
+systemctl status vdsmd
+systemctl status libvirtd
+systemctl status ovirt-imageio-daemon
+All services should show active (running) status.
+
+Step 4: Configure Firewall Rules
+Ensure necessary ports are open for RHVM communication:
+
+firewall-cmd --permanent --add-service=ovirt-imageio
+firewall-cmd --permanent --add-service=ovirt-storageconsole
+firewall-cmd --permanent --add-service=ovirt-vmconsole
+firewall-cmd --permanent --add-port=54321/tcp
+firewall-cmd --reload
+Subtask 1.2: Register RHVH Using Web Console
+Step 1: Access RHVM Web Administration Portal
+Open your web browser
+Navigate to: https://rhvm-server-ip/ovirt-engine
+Accept the SSL certificate warning if prompted
+Log in with administrator credentials:
+Username: admin
+Password: [provided in lab environment]
+Domain: internal
+Step 2: Navigate to Hosts Section
+Click on Compute in the left navigation menu
+Select Hosts from the dropdown menu
+Click the New button to add a new host
+Step 3: Configure Host Registration Details
+Fill in the New Host dialog with the following information:
+
+General Tab:
+
+Name: rhvh-host-01
+Comment: Primary RHVH Host for Lab Environment
+Hostname: rhvh-host-ip (use the actual IP address)
+Password: [root password for RHVH host]
+Advanced Parameters:
+
+SSH Port: 22
+SSH Fingerprint: Leave blank (will be auto-detected)
+Step 4: Configure Host Cluster Assignment
+In the General tab, locate the Host Cluster dropdown
+Select Default cluster (or create a new cluster if needed)
+Ensure Data Center is set to Default
+Step 5: Initiate Host Registration
+Click OK to begin the registration process
+Monitor the progress in the Events tab at the bottom of the screen
+The registration process typically takes 5-10 minutes
+Subtask 1.3: Register RHVH Using Command Line Interface
+As an alternative method, you can also register the host using CLI commands.
+
+Step 1: Access RHVM Server via SSH
+ssh root@rhvm-server-ip
+Step 2: Use ovirt-engine-cli Tool
+Install the CLI tool if not already present:
+
+dnf install ovirt-engine-cli -y
+Step 3: Create Host Registration Script
+Create a script to automate host registration:
+
+cat > register_host.sh << 'EOF'
+#!/bin/bash
+
+# RHVM connection details
+RHVM_URL="https://localhost/ovirt-engine/api"
+RHVM_USER="admin@internal"
+RHVM_PASS="your_admin_password"
+
+# Host details
+HOST_NAME="rhvh-host-01"
+HOST_ADDRESS="rhvh-host-ip"
+HOST_PASSWORD="rhvh_root_password"
+CLUSTER_NAME="Default"
+
+# Register the host
+ovirt-shell -c -u "$RHVM_USER" -p "$RHVM_PASS" -U "$RHVM_URL" << SHELL_EOF
+add host --name "$HOST_NAME" --address "$HOST_ADDRESS" --root_password "$HOST_PASSWORD" --cluster-name "$CLUSTER_NAME"
+SHELL_EOF
+
+echo "Host registration initiated for $HOST_NAME"
+EOF
+Step 4: Execute Registration Script
+Make the script executable and run it:
+
+chmod +x register_host.sh
+./register_host.sh
+Task 2: Verify Host Registration Status
+Subtask 2.1: Check Registration Status via Web Console
+Step 1: Monitor Host Status in RHVM
+Return to the RHVM web console
+Navigate to Compute → Hosts
+Locate your newly registered host rhvh-host-01
+Observe the Status column
+Step 2: Understand Status Indicators
+The host will progress through several states:
+
+Installing: Initial setup and package installation
+Reboot: Host is rebooting after installation
+Non Operational: Host is starting services
+Up: Host is fully operational and ready
+Step 3: View Detailed Host Information
+Click on the host name rhvh-host-01
+Review the General tab for basic information
+Check the Hardware tab for system specifications
+Examine the Network Interfaces tab for network configuration
+Subtask 2.2: Verify Registration Using Command Line
+Step 1: Check Host Status from RHVM Server
+Connect to RHVM server and check host status:
+
+ssh root@rhvm-server-ip
+Query the database for host information:
+
+su - postgres -c "psql engine -c \"SELECT name, status, cluster_id FROM vds WHERE name='rhvh-host-01';\""
+Step 2: Verify Services on RHVH Host
+Connect to the RHVH host and verify services:
+
+ssh root@rhvh-host-ip
+Check VDSM service status:
+
+systemctl status vdsmd
+journalctl -u vdsmd -f
+Step 3: Test VDSM Communication
+Verify VDSM is responding to RHVM requests:
+
+vdsm-client Host getCapabilities
+This command should return detailed host capabilities in JSON format.
+
+Subtask 2.3: Troubleshoot Common Registration Issues
+Issue 1: SSH Connection Failures
+If registration fails due to SSH issues:
+
+# On RHVH host, check SSH service
+systemctl status sshd
+systemctl restart sshd
+
+# Verify SSH key authentication
+ssh-keygen -R rhvh-host-ip
+Issue 2: Firewall Blocking Communication
+Check and configure firewall rules:
+
+# On RHVH host
+firewall-cmd --list-all
+firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="rhvm-server-ip" accept'
+firewall-cmd --reload
+Issue 3: Certificate Issues
+Resolve SSL certificate problems:
+
+# On RHVH host
+rm -rf /etc/pki/vdsm/certs/*
+systemctl restart vdsmd
+Task 3: Monitor RHVH Status from RHVM
+Subtask 3.1: Configure Host Monitoring
+Step 1: Access Host Monitoring Dashboard
+In RHVM web console, navigate to Compute → Hosts
+Select your registered host rhvh-host-01
+Click on the Monitor tab
+Step 2: Review Performance Metrics
+Monitor key performance indicators:
+
+CPU Usage: Current processor utilization
+Memory Usage: RAM consumption and availability
+Network I/O: Network traffic statistics
+Storage I/O: Disk read/write operations
+Step 3: Set Up Monitoring Alerts
+Configure alerts for critical thresholds:
+
+Navigate to Administration → Configure
+Select System → Scheduling Policy
+Configure CPU and memory thresholds:
+# Example threshold configuration
+CPU_HIGH_THRESHOLD=80
+MEMORY_HIGH_THRESHOLD=85
+Subtask 3.2: Monitor Host Health Status
+Step 1: Check Host Health Indicators
+Review health status indicators in the web console:
+
+Power Management: Host power state
+Network Status: Network connectivity health
+Storage Connectivity: Storage domain accessibility
+VM Count: Number of running virtual machines
+Step 2: Monitor Host Events
+Navigate to Events tab in the main dashboard
+Filter events by host name: rhvh-host-01
+Review recent events for any warnings or errors
+Step 3: Generate Host Health Report
+Create a comprehensive health report:
+
+# On RHVM server, generate host report
+engine-reports --report=host_health --host=rhvh-host-01 --format=html
+Subtask 3.3: Set Up Automated Monitoring
+Step 1: Configure SNMP Monitoring
+Enable SNMP on the RHVH host:
+
+# On RHVH host
+dnf install net-snmp net-snmp-utils -y
+systemctl enable snmpd
+systemctl start snmpd
+Configure SNMP community string:
+
+cat > /etc/snmp/snmpd.conf << 'EOF'
+com2sec readonly default public
+group readgroup v2c readonly
+view all included .1 80
+access readgroup "" any noauth exact all none none
+EOF
+
+systemctl restart snmpd
+Step 2: Configure Log Monitoring
+Set up centralized logging:
+
+# Configure rsyslog for remote logging
+cat >> /etc/rsyslog.conf << 'EOF'
+*.* @@rhvm-server-ip:514
+EOF
+
+systemctl restart rsyslog
+Step 3: Create Monitoring Scripts
+Create automated monitoring scripts:
+
+cat > /usr/local/bin/host_monitor.sh << 'EOF'
+#!/bin/bash
+
+# Host monitoring script
+HOST_NAME=$(hostname)
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+# Check CPU usage
+CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)
+
+# Check memory usage
+MEM_USAGE=$(free | grep Mem | awk '{printf("%.2f", $3/$2 * 100.0)}')
+
+# Check disk usage
+DISK_USAGE=$(df -h / | awk 'NR==2{print $5}' | cut -d'%' -f1)
+
+# Log metrics
+echo "$TIMESTAMP - Host: $HOST_NAME, CPU: ${CPU_USAGE}%, Memory: ${MEM_USAGE}%, Disk: ${DISK_USAGE}%" >> /var/log/host_metrics.log
+
+# Send alerts if thresholds exceeded
+if (( $(echo "$CPU_USAGE > 80" | bc -l) )); then
+    logger "HIGH CPU USAGE ALERT: $CPU_USAGE%"
+fi
+
+if (( $(echo "$MEM_USAGE > 85" | bc -l) )); then
+    logger "HIGH MEMORY USAGE ALERT: $MEM_USAGE%"
+fi
+EOF
+
+chmod +x /usr/local/bin/host_monitor.sh
+Step 4: Schedule Monitoring Tasks
+Add monitoring script to crontab:
+
+# Run monitoring script every 5 minutes
+echo "*/5 * * * * /usr/local/bin/host_monitor.sh" | crontab -
+Verification and Testing
+Final Verification Steps
+Step 1: Comprehensive Status Check
+Perform a complete status verification:
+
+# On RHVM server
+engine-status
+
+# On RHVH host
+vdsm-client Host getStats
+Step 2: Test Virtual Machine Creation
+Verify the host can support VM operations:
+
+In RHVM web console, navigate to Compute → Virtual Machines
+Click New to create a test VM
+Assign the VM to your registered host
+Start the VM to verify functionality
+Step 3: Network Connectivity Test
+Test network connectivity between RHVM and RHVH:
+
+# From RHVM server
+telnet rhvh-host-ip 54321
+telnet rhvh-host-ip 22
+Both connections should be successful.
+
+Troubleshooting Common Issues
+Issue Resolution Guide
+Problem: Host Shows "Non Operational" Status
+Solution Steps:
+
+Check VDSM service status:
+systemctl status vdsmd
+systemctl restart vdsmd
+Verify network connectivity:
+ping rhvm-server-ip
+telnet rhvm-server-ip 443
+Check firewall configuration:
+firewall-cmd --list-all
+Problem: Registration Fails with SSH Errors
+Solution Steps:
+
+Verify SSH service:
+systemctl status sshd
+systemctl restart sshd
+Check SSH configuration:
+grep -E "PermitRootLogin|PasswordAuthentication" /etc/ssh/sshd_config
+Test SSH connectivity:
+ssh -v root@rhvh-host-ip
+Problem: Certificate Verification Failures
+Solution Steps:
+
+Regenerate certificates:
+rm -rf /etc/pki/vdsm/certs/*
+systemctl restart vdsmd
+Update CA certificates:
+update-ca-trust
+Conclusion
+In this lab, you have successfully accomplished the following key objectives:
+
+What You Accomplished
+Successfully registered RHVH with RHVM using both web console and command-line methods
+Verified host registration status through multiple verification techniques
+Configured comprehensive monitoring for the RHVH host from RHVM
+Implemented automated monitoring solutions to maintain ongoing host health visibility
+Troubleshot common registration issues and learned resolution techniques
+Why This Matters
+Centralized Management: By registering RHVH with RHVM, you have established centralized management capabilities that are essential for enterprise virtualization environments. This enables:
+
+Unified Control: Single point of control for multiple virtualization hosts
+Resource Optimization: Efficient allocation and management of compute resources
+Monitoring and Alerting: Proactive monitoring to prevent issues before they impact services
+Scalability: Foundation for expanding your virtualization infrastructure
+Real-World Applications
+The skills you have developed in this lab are directly applicable to:
+
+Enterprise Data Centers: Managing large-scale virtualization deployments
+Cloud Infrastructure: Building private cloud environments
+Disaster Recovery: Implementing robust backup and recovery solutions
+Development Environments: Creating isolated development and testing platforms
+Next Steps
+To continue building your Red Hat virtualization expertise:
+
+Explore Advanced Host Management: Learn about host maintenance modes and updates
+Study Storage Domain Configuration: Understand shared storage integration
+Practice VM Migration: Learn live migration techniques between hosts
+Implement High Availability: Configure automatic VM failover capabilities
+This lab has provided you with fundamental skills for the Red Hat Certified Specialist in Virtualization exam and practical experience that directly applies to real-world virtualization management scenarios.
