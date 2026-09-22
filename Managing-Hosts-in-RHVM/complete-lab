@@ -1,0 +1,363 @@
+Lab 6: Managing Hosts in RHVM
+Objectives
+By the end of this lab, you will be able to:
+
+Add multiple Red Hat Virtualization Host (RHVH) instances to Red Hat Virtualization Manager (RHVM)
+Organize hosts into logical datacenters and clusters for better management
+Monitor host status, resource utilization, and performance metrics
+Understand the hierarchical structure of RHVM infrastructure
+Perform basic host maintenance operations
+Troubleshoot common host connectivity issues
+Prerequisites
+Before starting this lab, you should have:
+
+Basic understanding of virtualization concepts
+Familiarity with Linux command line operations
+Knowledge of networking fundamentals (IP addressing, DNS)
+Completion of previous RHVM installation and configuration labs
+Understanding of datacenter and cluster concepts in virtualization
+Required Knowledge Areas
+Red Hat Virtualization Architecture: Understanding of RHVM components
+Network Configuration: Basic TCP/IP and DNS concepts
+Linux System Administration: File permissions, service management
+Storage Concepts: Shared storage and storage domains
+Lab Environment Setup
+Al Nafi Cloud Machines: This lab uses pre-configured Linux-based cloud machines provided by Al Nafi. Simply click Start Lab to access your environment. No need to build your own virtual machines.
+
+Environment Details
+Your lab environment includes:
+
+1 RHVM Manager node (pre-installed and configured)
+3 RHVH Host nodes (clean installations ready for management)
+Shared storage system (NFS or iSCSI)
+Network connectivity between all components
+Task 1: Adding Multiple RHVH Hosts to RHVM
+Subtask 1.1: Verify RHVM Manager Status
+First, ensure your RHVM Manager is running and accessible.
+
+Access the RHVM Web Interface
+# Check if RHVM engine service is running
+sudo systemctl status ovirt-engine
+
+# If not running, start the service
+sudo systemctl start ovirt-engine
+Open Web Browser and Navigate to RHVM
+Access the RHVM web interface at: https://your-rhvm-manager-ip/ovirt-engine
+
+Login with Administrator Credentials
+Username: admin@internal
+Password: your-admin-password
+Subtask 1.2: Prepare RHVH Hosts for Management
+Before adding hosts to RHVM, ensure they are properly configured.
+
+Connect to First RHVH Host
+# SSH to the first RHVH host
+ssh root@rhvh-host1-ip
+
+# Verify host is ready
+vdsm-client Host getStats
+Configure Host Network Settings
+# Check network configuration
+nmcli connection show
+
+# Ensure proper DNS resolution
+nslookup your-rhvm-manager-hostname
+
+# Verify time synchronization
+chrony sources -v
+Repeat for Additional Hosts
+Perform the same verification steps for rhvh-host2 and rhvh-host3.
+
+Subtask 1.3: Add First Host to RHVM
+Navigate to Hosts Section
+In the RHVM web interface:
+
+Click on Compute → Hosts
+Click New button
+Configure Host Details
+Fill in the following information:
+
+Name: rhvh-host1
+Comment: Primary virtualization host
+Hostname: rhvh-host1.example.com (or IP address)
+SSH Port: 22
+Cluster: Default (we'll create custom clusters later)
+Authentication Settings
+Authentication Method: Password
+Root Password: Enter the root password for the RHVH host
+Advanced Parameters
+# Optional: Configure host-specific settings
+# Power Management: Configure if using IPMI/iLO
+# Kernel: Leave default unless specific requirements
+# Memory: Set memory overcommit ratio if needed
+Complete Host Addition
+Click OK to add the host
+Monitor the installation progress in the Events tab
+Subtask 1.4: Add Additional Hosts
+Repeat the host addition process for the remaining hosts:
+
+Add Second Host
+Name: rhvh-host2
+Hostname: rhvh-host2.example.com
+Follow the same configuration steps
+Add Third Host
+Name: rhvh-host3
+Hostname: rhvh-host3.example.com
+Follow the same configuration steps
+Verify Host Status
+# Check all hosts are in "Up" status
+# Navigate to Compute → Hosts
+# Verify each host shows:
+# - Status: Up
+# - SPM: One host should be SPM (Storage Pool Manager)
+# - Load: Should show current resource utilization
+Task 2: Organizing Hosts into Datacenters and Clusters
+Subtask 2.1: Understanding RHVM Hierarchy
+The RHVM organizational structure follows this hierarchy:
+
+Datacenter → Cluster → Host → Virtual Machine
+Subtask 2.2: Create Additional Datacenters
+Create Production Datacenter
+Navigate to Compute → Data Centers:
+
+Click New
+Name: Production-DC
+Description: Production environment datacenter
+Type: Shared
+Compatibility Version: 4.4 (or latest available)
+Quota Mode: Disabled
+Create Development Datacenter
+Name: Development-DC
+Description: Development and testing environment
+Type: Shared
+Compatibility Version: 4.4
+Subtask 2.3: Create Clusters within Datacenters
+Create Production Cluster
+Navigate to Compute → Clusters:
+
+# Production Cluster Configuration
+Name: Production-Cluster
+Data Center: Production-DC
+Management Network: ovirtmgmt
+CPU Type: Intel Nehalem Family (or appropriate for your hardware)
+Compatibility Version: 4.4
+Create Development Cluster
+# Development Cluster Configuration
+Name: Development-Cluster
+Data Center: Development-DC
+Management Network: ovirtmgmt
+CPU Type: Intel Nehalem Family
+Compatibility Version: 4.4
+Configure Cluster Policies
+For each cluster, configure:
+
+Scheduling Policy: evenly_distributed
+Memory Optimization: None (for production) or For Server Load (for development)
+CPU Threads: Enable if supported by hardware
+Subtask 2.4: Move Hosts to Appropriate Clusters
+Move Host to Production Cluster
+Navigate to Compute → Hosts
+Select rhvh-host1
+Click Edit
+Change Cluster to Production-Cluster
+Click OK
+Distribute Remaining Hosts
+# Host Distribution Strategy:
+# rhvh-host1 → Production-Cluster
+# rhvh-host2 → Production-Cluster  
+# rhvh-host3 → Development-Cluster
+Verify Host Placement
+Check that hosts are properly distributed and show Up status in their new clusters.
+
+Subtask 2.5: Configure Storage Domains for Datacenters
+Attach Storage to Production Datacenter
+Navigate to Storage → Domains:
+
+Select existing storage domain
+Click Manage Domain
+Attach to Production-DC
+Create Development Storage Domain
+# If separate storage is available for development
+Name: Development-Storage
+Domain Function: Data
+Storage Type: NFS (or available type)
+Export Path: /path/to/development/storage
+Task 3: Monitoring Host Status and Resources
+Subtask 3.1: Host Status Dashboard
+Access Host Overview
+Navigate to Compute → Hosts to view:
+
+Status: Up, Down, Maintenance, Installing
+Load: CPU and memory utilization
+Network: Network throughput
+SPM: Storage Pool Manager designation
+Detailed Host Information
+Click on individual hosts to view:
+
+# Host Details Include:
+- General: Basic host information
+- Network Interfaces: Network configuration and statistics  
+- Virtual Machines: VMs running on the host
+- Events: Recent host events and alerts
+- Statistics: Performance graphs and metrics
+Subtask 3.2: Resource Monitoring
+CPU Monitoring
+# View CPU utilization for each host
+# Navigate to host → Statistics tab
+# Monitor:
+# - CPU Usage %
+# - CPU Load Average
+# - Number of CPU cores
+Memory Monitoring
+# Memory statistics to monitor:
+# - Total Memory
+# - Used Memory  
+# - Free Memory
+# - Memory Usage %
+# - Swap Usage
+Network Monitoring
+# Network interface statistics:
+# - Bytes Transmitted/Received
+# - Packets Transmitted/Received
+# - Network Errors
+# - Interface Status
+Subtask 3.3: Setting Up Monitoring Alerts
+Configure Host Monitoring
+Navigate to Administration → Configure:
+
+Engine → Notifications
+Enable email notifications for host events
+Configure SMTP settings
+Create Custom Monitoring Scripts
+#!/bin/bash
+# Host monitoring script example
+# Save as /usr/local/bin/rhvm-host-monitor.sh
+
+RHVM_API="https://your-rhvm-manager/ovirt-engine/api"
+USERNAME="admin@internal"
+PASSWORD="your-password"
+
+# Get host status
+curl -k -u "$USERNAME:$PASSWORD" \
+  -H "Accept: application/xml" \
+  "$RHVM_API/hosts" | \
+  grep -E "(name|status)"
+Schedule Monitoring Tasks
+# Add to crontab for regular monitoring
+crontab -e
+
+# Add line for every 5 minutes monitoring
+*/5 * * * * /usr/local/bin/rhvm-host-monitor.sh >> /var/log/rhvm-monitoring.log
+Subtask 3.4: Performance Analysis
+Generate Performance Reports
+Navigate to Reports (if available) or use command line:
+
+# Generate host performance report
+engine-reports --report-name="Host Performance" \
+  --start-date="2024-01-01" \
+  --end-date="2024-01-31"
+Analyze Resource Trends
+# View historical data for capacity planning
+# Check for:
+# - Peak usage times
+# - Resource bottlenecks  
+# - Growth trends
+# - Underutilized resources
+Subtask 3.5: Host Maintenance Operations
+Put Host in Maintenance Mode
+# Before performing maintenance:
+# 1. Navigate to Compute → Hosts
+# 2. Select host
+# 3. Click "Maintenance"
+# 4. Confirm migration of running VMs
+Activate Host from Maintenance
+# After maintenance completion:
+# 1. Select host in maintenance
+# 2. Click "Activate"  
+# 3. Wait for host to return to "Up" status
+Host Health Checks
+# Perform regular health checks
+# SSH to host and run:
+vdsm-client Host getStats
+systemctl status vdsmd
+df -h  # Check disk space
+free -h  # Check memory
+Troubleshooting Common Issues
+Host Connection Problems
+# If host fails to connect:
+# 1. Check network connectivity
+ping rhvh-host-ip
+
+# 2. Verify SSH access
+ssh root@rhvh-host-ip
+
+# 3. Check firewall settings
+firewall-cmd --list-all
+
+# 4. Verify VDSM service
+systemctl status vdsmd
+Host Status Issues
+# If host shows "Non Responsive":
+# 1. Check host system load
+uptime
+
+# 2. Restart VDSM service
+systemctl restart vdsmd
+
+# 3. Check storage connectivity
+mount | grep storage-domain
+Performance Issues
+# For performance problems:
+# 1. Check system resources
+top
+iostat -x 1
+
+# 2. Review logs
+tail -f /var/log/vdsm/vdsm.log
+
+# 3. Verify network performance
+iperf3 -c rhvm-manager-ip
+Verification Steps
+Verify Host Management
+Check Host Status
+
+All hosts should show Up status
+Hosts should be distributed across clusters as planned
+One host per cluster should be designated as SPM
+Verify Cluster Configuration
+
+Clusters should be associated with correct datacenters
+Cluster policies should be properly configured
+CPU compatibility should be consistent within clusters
+Test Host Operations
+
+Successfully put host in maintenance mode
+Migrate VMs between hosts
+Activate host from maintenance
+Validate Monitoring Setup
+# Confirm monitoring is working:
+# 1. Check host statistics are updating
+# 2. Verify alert notifications (if configured)
+# 3. Test custom monitoring scripts
+# 4. Review performance trends
+Conclusion
+In this lab, you have successfully:
+
+Added multiple RHVH hosts to your RHVM environment, expanding your virtualization infrastructure
+Organized hosts into logical datacenters and clusters, creating a structured and manageable environment
+Implemented comprehensive monitoring of host status and resource utilization
+Learned maintenance procedures for keeping hosts healthy and operational
+Key Accomplishments
+Infrastructure Scaling: You now understand how to grow your virtualization environment by adding multiple hosts
+Organizational Structure: You've implemented the RHVM hierarchy (Datacenter → Cluster → Host) for better management
+Monitoring Capabilities: You can now track host performance and identify potential issues before they impact services
+Operational Procedures: You've learned essential maintenance tasks for ongoing host management
+Why This Matters
+Managing multiple hosts in RHVM is crucial for:
+
+High Availability: Multiple hosts provide redundancy and failover capabilities
+Load Distribution: Workloads can be spread across multiple physical servers
+Maintenance Windows: Hosts can be maintained without service interruption
+Scalability: Infrastructure can grow to meet increasing demands
+Resource Optimization: Better utilization of hardware resources across the environment
+This knowledge prepares you for real-world virtualization environments where managing multiple hosts efficiently is essential for maintaining reliable and scalable infrastructure services. These skills are directly applicable to the Red Hat Certified Specialist in Virtualization exam and professional virtualization management roles.
