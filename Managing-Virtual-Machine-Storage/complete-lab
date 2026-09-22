@@ -1,0 +1,316 @@
+Lab 15: Managing Virtual Machine Storage
+Objectives
+By the end of this lab, you will be able to:
+
+Understand different VM storage options and disk types
+Attach additional storage disks to existing virtual machines
+Detach and remove storage from virtual machines safely
+Verify storage operations using web-based management consoles
+Manage VM storage lifecycle operations effectively
+Troubleshoot common storage-related issues in virtualized environments
+Prerequisites
+Before starting this lab, you should have:
+
+Basic understanding of Linux command line operations
+Familiarity with virtual machine concepts
+Knowledge of file systems and disk partitioning
+Understanding of storage terminology (volumes, partitions, mount points)
+Access to a virtualization platform with web console capabilities
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines for this lab. Simply click Start Lab to access your environment - no need to build your own VM infrastructure.
+
+Your lab environment includes:
+
+Host system with virtualization capabilities enabled
+Web-based management console access
+Pre-existing virtual machine for testing
+Administrative privileges for storage management
+Task 1: Attach Additional Storage to an Existing VM
+Subtask 1.1: Verify Current Storage Configuration
+First, let's examine the current storage setup of our target virtual machine.
+
+Access the web console and navigate to the virtual machines section
+Select your target VM from the list of available machines
+Check current disk configuration by viewing the storage tab
+From the command line on the host system, verify the VM's current storage:
+
+# List all virtual machines and their storage
+virsh list --all
+
+# Get detailed information about VM storage
+virsh domblklist your-vm-name
+
+# Check disk usage within the VM
+virsh console your-vm-name
+Once connected to the VM console:
+
+# Display current disk partitions
+lsblk
+
+# Show filesystem usage
+df -h
+
+# List all block devices
+fdisk -l
+Subtask 1.2: Create Additional Virtual Disk
+Now we'll create a new virtual disk file that can be attached to our VM.
+
+Navigate to the storage pool in your web console
+Create a new volume with the following specifications:
+Name: additional-disk-01
+Format: qcow2
+Size: 5 GB
+Alternatively, create the disk using command line:
+
+# Create a new qcow2 disk image
+qemu-img create -f qcow2 /var/lib/libvirt/images/additional-disk-01.qcow2 5G
+
+# Verify the disk creation
+qemu-img info /var/lib/libvirt/images/additional-disk-01.qcow2
+
+# Set appropriate permissions
+chown qemu:qemu /var/lib/libvirt/images/additional-disk-01.qcow2
+chmod 644 /var/lib/libvirt/images/additional-disk-01.qcow2
+Subtask 1.3: Attach Disk to Running VM
+With the disk created, we'll now attach it to our running virtual machine.
+
+Using Web Console:
+
+Select your VM from the virtual machines list
+Navigate to the Storage tab
+Click Add Disk button
+Configure the new disk:
+Source: Select the disk we created
+Device: vdb (or next available)
+Bus: virtio
+Cache: default
+Apply changes
+Using Command Line:
+
+# Attach disk to running VM (hot-plug)
+virsh attach-disk your-vm-name \
+    /var/lib/libvirt/images/additional-disk-01.qcow2 \
+    vdb \
+    --driver qemu \
+    --subdriver qcow2 \
+    --type disk \
+    --mode rw
+
+# Verify attachment
+virsh domblklist your-vm-name
+Subtask 1.4: Configure the New Disk Inside VM
+Now we need to configure the newly attached disk within the virtual machine.
+
+Connect to your VM console
+Verify the new disk is detected:
+# Check if new disk is visible
+lsblk
+
+# Verify new disk device
+fdisk -l | grep /dev/vdb
+Create a partition on the new disk:
+# Start fdisk for the new disk
+sudo fdisk /dev/vdb
+
+# Inside fdisk, execute these commands:
+# n (new partition)
+# p (primary partition)
+# 1 (partition number)
+# [Enter] (default first sector)
+# [Enter] (default last sector)
+# w (write changes)
+Format the new partition:
+# Create ext4 filesystem
+sudo mkfs.ext4 /dev/vdb1
+
+# Verify filesystem creation
+sudo blkid /dev/vdb1
+Mount the new disk:
+# Create mount point
+sudo mkdir /mnt/additional-storage
+
+# Mount the partition
+sudo mount /dev/vdb1 /mnt/additional-storage
+
+# Verify mount
+df -h | grep additional-storage
+Make mount persistent:
+# Get UUID of the partition
+sudo blkid /dev/vdb1
+
+# Add entry to fstab
+echo "UUID=your-uuid-here /mnt/additional-storage ext4 defaults 0 2" | sudo tee -a /etc/fstab
+
+# Test fstab entry
+sudo umount /mnt/additional-storage
+sudo mount -a
+df -h | grep additional-storage
+Task 2: Detach and Remove Storage from a VM
+Subtask 2.1: Prepare for Storage Removal
+Before removing storage, we must ensure data safety and proper unmounting.
+
+Check what's using the storage:
+# Check for open files on the mount point
+sudo lsof /mnt/additional-storage
+
+# Check for processes using the mount point
+sudo fuser -v /mnt/additional-storage
+Backup important data (if any):
+# Create test data first
+sudo touch /mnt/additional-storage/test-file.txt
+echo "Test data for storage lab" | sudo tee /mnt/additional-storage/test-file.txt
+
+# Backup the data
+sudo cp -r /mnt/additional-storage/* /tmp/storage-backup/
+Subtask 2.2: Safely Unmount the Storage
+Proper unmounting is crucial before detaching storage from a VM.
+
+Unmount the filesystem:
+# Unmount the additional storage
+sudo umount /mnt/additional-storage
+
+# Verify unmount
+df -h | grep additional-storage
+mount | grep vdb1
+Remove from fstab:
+# Edit fstab to remove the entry
+sudo sed -i '/additional-storage/d' /etc/fstab
+
+# Verify removal
+cat /etc/fstab | grep additional-storage
+Subtask 2.3: Detach Disk from VM
+Now we can safely detach the disk from the virtual machine.
+
+Using Web Console:
+
+Navigate to your VM's storage tab
+Select the additional disk (vdb)
+Click the detach/remove button
+Confirm the removal
+Using Command Line:
+
+# Detach disk from running VM (hot-unplug)
+virsh detach-disk your-vm-name vdb
+
+# Verify detachment
+virsh domblklist your-vm-name
+
+# Check inside VM that disk is gone
+lsblk
+Subtask 2.4: Remove Disk File (Optional)
+If you no longer need the disk file, you can remove it completely.
+
+# Remove the disk image file
+rm /var/lib/libvirt/images/additional-disk-01.qcow2
+
+# Verify removal
+ls -la /var/lib/libvirt/images/ | grep additional-disk
+Task 3: Verify Storage Operations Using Web Console
+Subtask 3.1: Monitor Storage Changes in Real-Time
+The web console provides excellent visibility into storage operations.
+
+Access the main dashboard of your virtualization platform
+Navigate to Storage Pools section
+Review storage utilization and available space
+Check storage pool health and status
+Subtask 3.2: Verify VM Storage Configuration
+Select your test VM from the virtual machines list
+Review the Storage tab to confirm:
+Original system disk is present
+Additional disk has been removed
+No orphaned storage references exist
+Subtask 3.3: Check Storage Events and Logs
+Navigate to the Events/Logs section
+Filter for storage-related events
+Verify successful attach/detach operations
+From command line, check system logs:
+
+# Check libvirt logs for storage operations
+sudo journalctl -u libvirtd | grep -i storage
+
+# Check for any storage-related errors
+sudo journalctl | grep -i "disk\|storage" | tail -20
+
+# Verify VM configuration
+virsh dumpxml your-vm-name | grep -A 5 -B 5 disk
+Subtask 3.4: Performance and Health Verification
+Monitor VM performance after storage changes
+Check disk I/O statistics:
+# Monitor disk I/O
+iostat -x 1 5
+
+# Check VM disk performance
+virsh domstats your-vm-name | grep block
+Verify filesystem integrity:
+# Check remaining filesystem
+sudo fsck /dev/vda1
+
+# Verify system disk health
+sudo smartctl -a /dev/vda
+Troubleshooting Common Issues
+Issue 1: Disk Attachment Fails
+Symptoms: Error messages when trying to attach disk
+
+Solutions:
+
+# Check if VM is running
+virsh list | grep your-vm-name
+
+# Verify disk file permissions
+ls -la /var/lib/libvirt/images/additional-disk-01.qcow2
+
+# Check available device names
+virsh domblklist your-vm-name
+Issue 2: Cannot Unmount Filesystem
+Symptoms: "Device busy" error when unmounting
+
+Solutions:
+
+# Find processes using the mount point
+sudo fuser -km /mnt/additional-storage
+
+# Force unmount (use with caution)
+sudo umount -f /mnt/additional-storage
+
+# Lazy unmount as last resort
+sudo umount -l /mnt/additional-storage
+Issue 3: Disk Not Visible in VM
+Symptoms: Attached disk doesn't appear in VM
+
+Solutions:
+
+# Rescan SCSI bus
+echo "- - -" | sudo tee /sys/class/scsi_host/host*/scan
+
+# Check dmesg for disk detection
+dmesg | grep -i disk
+
+# Verify virtio modules are loaded
+lsmod | grep virtio
+Best Practices for VM Storage Management
+Storage Planning
+Always plan storage requirements before VM deployment
+Use appropriate disk formats (qcow2 for flexibility, raw for performance)
+Implement proper backup strategies before making changes
+Monitor storage performance regularly
+Safety Procedures
+Always unmount filesystems before detaching disks
+Backup critical data before storage operations
+Test storage changes in non-production environments first
+Document storage configurations for future reference
+Performance Optimization
+Use virtio drivers for better performance
+Choose appropriate cache modes based on use case
+Monitor disk I/O patterns and adjust accordingly
+Consider storage pool placement for optimal performance
+Conclusion
+In this lab, you have successfully learned how to manage virtual machine storage operations including:
+
+Attaching additional storage to running virtual machines using both web console and command-line methods
+Properly configuring new disks with partitioning, formatting, and mounting procedures
+Safely detaching and removing storage while maintaining data integrity
+Verifying storage operations through multiple monitoring approaches
+Troubleshooting common storage issues that may arise during operations
+These skills are essential for managing virtualized environments effectively and are directly applicable to the Red Hat Certified Specialist in Virtualization exam. Understanding storage management helps ensure optimal VM performance, data safety, and efficient resource utilization in production environments.
+
+The ability to dynamically manage VM storage is crucial in modern cloud and virtualization environments where storage requirements frequently change. These techniques allow you to scale storage resources up or down based on application needs while maintaining system stability and data integrity.
