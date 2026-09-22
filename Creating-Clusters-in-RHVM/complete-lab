@@ -1,0 +1,312 @@
+Lab 8: Creating Clusters in RHVM
+Objectives
+By the end of this lab, students will be able to:
+
+• Understand the concept and importance of clusters in Red Hat Virtualization Manager (RHVM) • Create and configure a new cluster within a datacenter • Add Red Hat Virtualization Host (RHVH) instances to clusters • Configure cluster resources including storage domains and network settings • Manage cluster properties and optimization settings • Troubleshoot common cluster configuration issues
+
+Prerequisites
+Before starting this lab, students should have:
+
+• Basic understanding of virtualization concepts • Familiarity with Red Hat Enterprise Linux command line interface • Completion of previous RHVM labs covering datacenter creation • Knowledge of networking fundamentals (VLANs, IP addressing) • Understanding of storage concepts (NFS, iSCSI, local storage) • Access to RHVM Manager interface with administrative privileges
+
+Lab Environment
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines for this lab. Simply click Start Lab to access your environment - no need to build your own virtual machines or install software.
+
+Your lab environment includes: • RHVM Manager server (pre-installed and configured) • Multiple RHVH hosts ready for cluster assignment • Storage domains configured and available • Network infrastructure properly set up
+
+Task 1: Understanding Clusters and Creating a New Cluster
+Subtask 1.1: Understanding Cluster Concepts
+A cluster in RHVM is a logical grouping of hosts that share the same storage domains and have the same type of CPU. Clusters provide:
+
+• Resource pooling: Combine multiple hosts into a single resource pool • High availability: Enable VM migration between hosts • Load balancing: Distribute VMs across available hosts • Centralized management: Manage multiple hosts as a single unit
+
+Subtask 1.2: Accessing RHVM Manager Interface
+Open your web browser and navigate to the RHVM Manager interface
+
+Log in using your administrator credentials:
+
+Username: admin@internal
+Password: [provided in lab environment]
+Once logged in, you should see the main RHVM dashboard
+
+Subtask 1.3: Navigating to Cluster Management
+In the left navigation panel, click on Compute
+Select Clusters from the dropdown menu
+You will see the clusters overview page showing existing clusters (if any)
+Subtask 1.4: Creating a New Cluster
+Click the New button to create a new cluster
+In the New Cluster dialog box, configure the following settings:
+General Tab:
+
+Name: Production-Cluster-01
+Description: Primary production cluster for web services
+Data Center: Default (or your existing datacenter)
+Management Network: ovirtmgmt
+CPU Type: Intel Nehalem Family (or match your hardware)
+Compatibility Version: 4.4 (latest available)
+Memory Optimization Settings: • Enable Memory Balloon: Checked • Enable KSM: Checked (Kernel Same-page Merging for memory optimization)
+
+Resilience Policy:
+
+Migrate Virtual Machines: Migrate
+Define custom migration policy: No
+Subtask 1.5: Configuring Advanced Cluster Settings
+Click on the Optimization tab:
+
+Memory Over Commitment: 150%
+CPU Over Commitment: 100%
+Migration Policy Tab:
+
+Migration Bandwidth: Auto
+Migration Policy: Minimal downtime
+Console Tab:
+
+Override SPICE Proxy: Leave blank
+Override VNC Encryption: Inherit from global setting
+Click OK to create the cluster
+
+Task 2: Adding RHVH Hosts to the Cluster
+Subtask 2.1: Preparing to Add Hosts
+Before adding hosts to your cluster, verify that: • Hosts are properly installed with RHVH • Network connectivity exists between RHVM Manager and hosts • SSH access is available to the hosts
+
+Subtask 2.2: Adding the First Host
+Navigate to Compute → Hosts in the left panel
+Click New to add a new host
+Configure the host settings:
+General Tab:
+Name: rhvh-host-01
+Hostname: rhvh-host-01.lab.local (or IP address)
+SSH Port: 22
+Cluster: Production-Cluster-01
+Authentication:
+
+Authentication Method: Password
+Root Password: [host root password]
+Power Management Tab (if applicable):
+
+Enable Power Management: Check if you have IPMI/iLO
+Address: [BMC IP address]
+User Name: [BMC username]
+Password: [BMC password]
+Type: [Select appropriate type - ipmilan, ilo, etc.]
+Click OK to add the host
+
+Subtask 2.3: Monitoring Host Installation
+The host will appear in Installing status
+Monitor the installation progress in the Events tab at the bottom
+Installation typically takes 5-10 minutes
+Host status will change to Up when ready
+Subtask 2.4: Adding Additional Hosts
+Repeat the process for additional hosts:
+
+Second Host Configuration:
+
+Name: rhvh-host-02
+Hostname: rhvh-host-02.lab.local
+Cluster: Production-Cluster-01
+Authentication: Password-based
+Third Host Configuration:
+
+Name: rhvh-host-03
+Hostname: rhvh-host-03.lab.local
+Cluster: Production-Cluster-01
+Authentication: Password-based
+Subtask 2.5: Verifying Host Addition
+Navigate to Compute → Clusters
+Click on Production-Cluster-01
+Go to the Hosts tab
+Verify all hosts show status Up
+Check that CPU and memory resources are properly detected
+Task 3: Configuring Cluster Resources
+Subtask 3.1: Configuring Storage Domains
+Navigate to Storage → Domains
+Click New Domain to create storage for your cluster
+Data Storage Domain:
+
+Domain Function: Data
+Storage Type: NFS
+Use Host: rhvh-host-01
+Export Path: nfs-server.lab.local:/data/rhvm/data
+Click OK to create the storage domain
+Wait for the domain to become Active
+ISO Storage Domain:
+
+Domain Function: ISO
+Storage Type: NFS
+Use Host: rhvh-host-01
+Export Path: nfs-server.lab.local:/data/rhvm/iso
+Subtask 3.2: Attaching Storage to Datacenter
+Navigate to Compute → Data Centers
+Select your datacenter
+Go to Storage tab
+Click Attach Data to attach the storage domains
+Select both data and ISO domains
+Click OK
+Subtask 3.3: Configuring Network Resources
+Navigate to Network → Networks
+Click New to create additional networks if needed
+VM Network Configuration:
+
+Name: vm-network-prod
+Description: Production VM network
+VLAN Tagging: Enable
+VLAN ID: 100
+VM Network: Checked
+Attach Network to Cluster: • Go to Compute → Clusters • Select Production-Cluster-01 • Click Manage Networks • Assign networks to the cluster • Set ovirtmgmt as management network • Assign vm-network-prod as VM network
+Subtask 3.4: Configuring Host Networks
+Navigate to Compute → Hosts
+
+Select rhvh-host-01
+
+Go to Network Interfaces tab
+
+Click Setup Host Networks
+
+Drag networks to appropriate interfaces:
+
+eth0: ovirtmgmt (management)
+eth1: vm-network-prod (VM traffic)
+Repeat for all hosts in the cluster
+
+Subtask 3.5: Setting Up Cluster Policies
+Navigate to Compute → Clusters
+Select Production-Cluster-01
+Click Edit
+Go to Scheduling Policy tab:
+Select Policy: evenly_distributed
+Properties:
+- CpuOverCommitDurationMinutes: 2
+- HighUtilization: 80
+- LowUtilization: 20
+Load Balancing:
+Enable automatic load balancing: Checked
+Task 4: Advanced Cluster Configuration
+Subtask 4.1: Configuring High Availability
+In cluster settings, configure HA options:
+
+HA Reservation: Enable
+Override HA reservation: No
+Fencing Configuration: • Ensure power management is configured on all hosts • Test fencing functionality:
+
+# SSH to RHVM Manager and test fencing
+ssh root@rhvm-manager.lab.local
+fence_ipmilan -a [host-bmc-ip] -l [username] -p [password] -o status
+Subtask 4.2: Creating Custom Scheduling Policies
+Navigate to Administration → Configure
+Go to Scheduling Policies
+Click New to create custom policy:
+Name: WebServer-Policy
+Description: Optimized for web server workloads
+Filters:
+- CPU
+- Memory
+- Network
+- Migration
+Weight Modules:
+- OptimalForEvenGuestDistribution: 1
+- OptimalForPowerSaving: 0
+- OptimalForEvenDistribution: 1
+Subtask 4.3: Configuring Cluster Maintenance
+Maintenance Mode Setup: • Select cluster → Edit • Configure maintenance settings:
+
+Maintenance Reason Requirement: Optional
+Backup and Recovery: • Set up automated backups • Configure cluster backup policies
+
+Verification and Testing
+Subtask 4.4: Testing Cluster Functionality
+Create Test VM:
+
+Name: test-vm-01
+Cluster: Production-Cluster-01
+Template: Blank
+Operating System: Red Hat Enterprise Linux 8.x
+Memory: 2048 MB
+CPU: 2 cores
+Test VM Migration: • Start the test VM • Right-click VM → Migrate • Select different host • Verify successful migration
+
+Test Load Balancing: • Create multiple VMs • Monitor distribution across hosts • Verify automatic load balancing
+
+Subtask 4.5: Monitoring Cluster Health
+Check Cluster Status: • Navigate to Compute → Clusters • Verify all indicators are green • Check resource utilization
+
+Review Events and Logs:
+
+# On RHVM Manager
+tail -f /var/log/ovirt-engine/engine.log
+
+# On RHVH hosts
+journalctl -f -u vdsmd
+Troubleshooting Common Issues
+Issue 1: Host Cannot Join Cluster
+Symptoms: Host stuck in "Installing" or "Non Responsive" state
+
+Solution:
+
+# Check network connectivity
+ping rhvh-host-01.lab.local
+
+# Verify SSH access
+ssh root@rhvh-host-01.lab.local
+
+# Check firewall settings on host
+firewall-cmd --list-all
+
+# Restart VDSM service on host
+systemctl restart vdsmd
+Issue 2: Storage Domain Not Accessible
+Symptoms: Storage domain shows as "Inactive"
+
+Solution:
+
+# Check NFS mount on host
+showmount -e nfs-server.lab.local
+
+# Test manual mount
+mount -t nfs nfs-server.lab.local:/data/rhvm/data /mnt/test
+
+# Check permissions
+ls -la /data/rhvm/data
+Issue 3: Network Configuration Problems
+Symptoms: VMs cannot communicate or migrate fails
+
+Solution:
+
+# Check network configuration on host
+ip addr show
+ip route show
+
+# Verify VLAN configuration
+cat /proc/net/vlan/config
+
+# Test network connectivity between hosts
+ping -c 4 rhvh-host-02.lab.local
+Best Practices
+Cluster Design Recommendations
+Naming Conventions:
+
+Clusters: [Environment]-Cluster-[Number]
+Hosts: rhvh-[cluster]-[number]
+Networks: [purpose]-network-[environment]
+Resource Planning: • Plan for 20% overhead on CPU and memory • Ensure adequate network bandwidth • Size storage appropriately for growth
+
+Security Considerations: • Use separate networks for management and VM traffic • Implement proper firewall rules • Regular security updates
+
+Monitoring and Maintenance
+Regular Tasks: • Monitor resource utilization • Review event logs • Test backup and recovery procedures • Update hosts and manager regularly
+
+Performance Optimization: • Adjust memory over-commitment based on workload • Fine-tune scheduling policies • Monitor and optimize storage performance
+
+Conclusion
+In this lab, you have successfully:
+
+• Created a production-ready cluster in RHVM with proper configuration and optimization settings • Added multiple RHVH hosts to the cluster with appropriate network and storage configurations • Configured cluster resources including storage domains, networks, and scheduling policies • Implemented high availability features and tested cluster functionality • Learned troubleshooting techniques for common cluster issues
+
+Why This Matters:
+
+Clusters are the foundation of enterprise virtualization infrastructure. They provide the scalability, reliability, and performance needed for production workloads. Understanding cluster creation and management is essential for:
+
+• Enterprise virtualization deployments requiring high availability and scalability • Red Hat Certified Specialist in Virtualization exam preparation • Real-world virtualization projects in enterprise environments • Career advancement in virtualization and cloud technologies
+
+The skills learned in this lab directly apply to managing production virtualization environments and are highly valued in the IT industry. Proper cluster configuration ensures optimal resource utilization, high availability, and simplified management of virtualized infrastructure.
+
+Next Steps: • Practice creating clusters with different configurations • Explore advanced features like affinity groups and custom scheduling policies • Learn about cluster maintenance and upgrade procedures • Study integration with other Red Hat technologies like OpenShift Virtualization
