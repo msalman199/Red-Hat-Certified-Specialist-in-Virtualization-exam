@@ -1,0 +1,419 @@
+Lab 11: Creating Virtual Machines in RHVM
+Objectives
+By the end of this lab, students will be able to:
+
+Navigate and use the Red Hat Virtualization Manager (RHVM) web console effectively
+Create and provision new virtual machines using RHVM interface
+Configure essential VM resources including CPU, memory, storage, and network settings
+Start virtual machines and verify their operational status
+Understand the relationship between virtualization hosts and virtual machines
+Apply best practices for VM resource allocation and management
+Prerequisites
+Before starting this lab, students should have:
+
+Basic understanding of virtualization concepts and terminology
+Familiarity with Linux command line operations
+Knowledge of basic networking concepts (IP addresses, subnets, VLANs)
+Understanding of storage concepts (disk types, file systems)
+Access to a web browser (Chrome, Firefox, or Edge recommended)
+Basic knowledge of Red Hat Enterprise Linux operating system
+Required Knowledge Areas
+Virtualization Fundamentals: Understanding of hypervisors, virtual machines, and resource allocation
+Linux Administration: Basic file system navigation and system administration concepts
+Network Configuration: IP addressing, DNS, and basic network troubleshooting
+Storage Management: Disk partitioning, file systems, and storage allocation concepts
+Lab Environment Setup
+Good News! Al Nafi provides pre-configured Linux-based cloud machines for this lab. You don't need to build your own virtual machines or install any software. Simply click Start Lab when you're ready to begin, and you'll have access to:
+
+A fully configured RHVM environment
+Pre-installed Red Hat Virtualization Manager
+Configured virtualization hosts
+Network and storage resources ready for use
+Web browser access to the RHVM console
+Environment Components
+Your lab environment includes:
+
+RHVM Manager Server: Central management interface
+Virtualization Hosts: Physical or virtual hosts running RHEL with KVM
+Storage Domains: Pre-configured storage for VM disks and ISOs
+Network Infrastructure: Virtual networks and bridges for VM connectivity
+Task 1: Accessing and Navigating the RHVM Web Console
+Subtask 1.1: Initial Console Access
+Open your web browser and navigate to the RHVM console URL provided in your lab environment
+
+The URL will typically be in the format: https://rhvm-manager.lab.local
+Accept any SSL certificate warnings if prompted
+Log in to the RHVM console using the provided credentials:
+
+Username: admin@internal
+Password: [provided in lab environment]
+Verify successful login by confirming you can see the main dashboard with:
+
+System overview widgets
+Resource utilization graphs
+Navigation menu on the left side
+Subtask 1.2: Console Navigation Overview
+Explore the main navigation menu located on the left side:
+
+Dashboard: System overview and monitoring
+Compute: Virtual machines and hosts management
+Network: Network configuration and management
+Storage: Storage domains and disk management
+Administration: User management and system settings
+Familiarize yourself with the top toolbar:
+
+User profile and logout options
+System notifications
+Help and documentation links
+Navigate to the Compute section and click on Virtual Machines:
+
+This is where you'll manage all VM operations
+Note the toolbar options: New, Edit, Remove, Run, etc.
+Task 2: Creating a New Virtual Machine
+Subtask 2.1: Initiating VM Creation
+Access the VM creation wizard:
+
+From the Compute → Virtual Machines section
+Click the New button in the toolbar
+The New Virtual Machine dialog will open
+Configure basic VM information:
+
+Name: lab-vm-01
+Description: Test virtual machine for Lab 11
+Comment: Created during RHVM training lab
+Select the operating system:
+
+Operating System: Red Hat Enterprise Linux 8.x x64
+Instance Type: Custom (we'll configure resources manually)
+Optimized for: Server
+Subtask 2.2: General Configuration Settings
+Configure VM general settings:
+
+Cluster: Default
+Template: Blank
+Memory Size: 2048 MB (2 GB)
+Maximum Memory: 4096 MB (4 GB)
+Total Virtual CPUs: 2
+Virtual Sockets: 1
+Cores per Virtual Socket: 2
+Threads per Core: 1
+Set boot options:
+
+First Device: Hard Disk
+Second Device: CD-ROM
+Enable Attach CD if you plan to install an OS later
+Configure advanced options:
+
+Time Zone: (UTC) Coordinated Universal Time
+Use Host CPU: Unchecked (for better portability)
+Task 3: Configuring VM Resources
+Subtask 3.1: CPU Configuration
+Navigate to the System tab in the New VM dialog:
+
+Verify CPU allocation: 2 Virtual CPUs
+CPU Topology:
+Virtual Sockets: 1
+Cores per Virtual Socket: 2
+Threads per Core: 1
+Configure CPU pinning (if required):
+
+Leave CPU Pinning unchecked for this lab
+This allows the hypervisor to schedule CPU resources dynamically
+Set CPU shares:
+
+CPU Shares: Medium (1024)
+This provides balanced CPU priority among VMs
+Subtask 3.2: Memory Configuration
+Configure memory allocation:
+
+Physical Memory Guaranteed: 1024 MB
+Memory Size: 2048 MB
+Maximum Memory: 4096 MB
+Memory Balloon Device: Enabled
+Understanding memory settings:
+
+Physical Memory Guaranteed: Minimum RAM always allocated
+Memory Size: Standard operating memory
+Maximum Memory: Maximum memory that can be hot-plugged
+Memory Balloon: Allows dynamic memory adjustment
+Subtask 3.3: Storage Configuration
+Navigate to the Disks tab:
+
+Click Attach to add a new disk
+Configure the primary disk:
+Size: 20 GB
+Storage Domain: [Select available storage domain]
+Allocation Policy: Thin Provision
+Disk Interface: VirtIO-SCSI
+Configure disk properties:
+
+Bootable: Yes (checked)
+Shareable: No (unchecked)
+Read Only: No (unchecked)
+Enable Discard: Yes (checked for thin provisioning)
+Add additional storage (optional):
+
+Click Attach again for a second disk
+Configure as data disk:
+Size: 10 GB
+Bootable: No
+Purpose: Data storage
+Subtask 3.4: Network Configuration
+Navigate to the Network Interfaces tab:
+
+A default network interface should be present
+Configure the network interface:
+Name: nic1
+Profile: ovirtmgmt (or available network profile)
+Type: VirtIO
+Advanced network settings:
+
+Link State: Up
+Card Status: Plugged
+MAC Address: [Auto-generated or specify custom]
+Add additional network interfaces (if needed):
+
+Click + to add more network interfaces
+Configure for different network segments as required
+Task 4: Finalizing VM Creation and Initial Boot
+Subtask 4.1: Review and Create VM
+Review all configuration settings:
+
+General tab: Name, OS, basic resources
+System tab: CPU and memory configuration
+Disks tab: Storage allocation and properties
+Network Interfaces tab: Network connectivity
+Create the virtual machine:
+
+Click OK to create the VM
+Wait for the creation process to complete
+The VM will appear in the Virtual Machines list with status Down
+Verify VM creation:
+
+Status: Down
+Host: No host assigned yet
+IP Address: Not available (VM not running)
+Memory: 2048 MB allocated
+CPUs: 2 virtual CPUs
+Subtask 4.2: Starting the Virtual Machine
+Select the newly created VM:
+
+Click on lab-vm-01 in the Virtual Machines list
+The VM details will appear in the bottom panel
+Start the virtual machine:
+
+Click the Run button in the toolbar
+Alternatively, right-click the VM and select Run
+Monitor the status change from Down to Powering Up
+Monitor the boot process:
+
+Status should change to Up within 30-60 seconds
+Note the assigned host in the Host column
+The Uptime counter will begin
+Subtask 4.3: Accessing the VM Console
+Open the VM console:
+
+Select the running VM
+Click Console in the toolbar
+Choose Console Options → SPICE or VNC
+Console connection methods:
+
+# For SPICE console (preferred)
+- Download and install virt-viewer if prompted
+- Click "Console" and select "Open in virt-viewer"
+
+# For browser-based console
+- Select "noVNC" option
+- Console opens in browser tab
+Verify console access:
+
+You should see the VM's boot screen or BIOS
+If no OS is installed, you'll see boot device selection
+Console should be responsive to keyboard and mouse input
+Task 5: Verifying VM Operation and Status
+Subtask 5.1: VM Status Verification
+Check VM operational status:
+
+Navigate to Compute → Virtual Machines
+Verify lab-vm-01 shows status Up
+Note the following information:
+Status: Up
+Host: [Assigned virtualization host]
+Uptime: [Time since startup]
+CPU Usage: [Current CPU utilization]
+Memory Usage: [Current memory utilization]
+Network: [Network interface status]
+Review resource utilization:
+
+Click on the VM name to view detailed information
+Check the General tab for basic status
+Review Monitor tab for performance metrics
+Subtask 5.2: Detailed VM Information Review
+Examine VM configuration details:
+
+General tab:
+Name: lab-vm-01
+Status: Up
+Host: [Current host assignment]
+IP Address: [If guest agent installed]
+Operating System: Red Hat Enterprise Linux 8.x x64
+Review resource allocation:
+
+Applications tab: Shows installed applications (requires guest agent)
+Snapshots tab: Available VM snapshots
+Network Interfaces tab: Current network configuration
+Disks tab: Attached storage devices
+Monitor performance metrics:
+
+CPU utilization graphs
+Memory usage statistics
+Network I/O metrics
+Disk I/O performance
+Subtask 5.3: Testing VM Functionality
+Verify console connectivity:
+
+Ensure console connection is stable
+Test keyboard and mouse responsiveness
+Verify display resolution is appropriate
+Check VM network connectivity (if OS is installed):
+
+# From VM console (if OS installed)
+ip addr show
+ping 8.8.8.8
+Verify storage accessibility:
+
+Confirm all attached disks are visible
+Check disk space allocation matches configuration
+Advanced Configuration Options
+VM High Availability Settings
+Configure HA settings:
+Edit VM → High Availability tab
+Highly Available: Enable for critical VMs
+Priority: Set restart priority (1-100)
+Resume Behavior: AUTO_RESUME or KILL
+VM Migration Settings
+Configure migration options:
+Migration Options: Allow manual and automatic migration
+Migration Policy: Minimal downtime or suspend workload
+Custom Migration Policy: Configure specific parameters
+Guest Agent Installation
+Install RHEL guest agent (when OS is installed):
+# On RHEL guest VM
+sudo dnf install qemu-guest-agent
+sudo systemctl enable qemu-guest-agent
+sudo systemctl start qemu-guest-agent
+Troubleshooting Common Issues
+VM Won't Start
+Problem: VM fails to start or remains in "Powering Up" state
+
+Solutions:
+
+Check host resources:
+
+Verify sufficient CPU and memory on target host
+Review host status in Compute → Hosts
+Verify storage connectivity:
+
+Ensure storage domains are active
+Check disk space availability
+Review VM logs:
+
+# On RHVM manager
+tail -f /var/log/ovirt-engine/engine.log
+Console Connection Issues
+Problem: Cannot connect to VM console
+
+Solutions:
+
+Check browser settings:
+
+Allow pop-ups for RHVM site
+Install virt-viewer for SPICE console
+Verify network connectivity:
+
+Ensure firewall allows console ports
+Check SPICE/VNC port configuration
+Alternative console access:
+
+Try different console type (SPICE vs VNC)
+Use browser-based noVNC console
+Performance Issues
+Problem: VM running slowly or unresponsively
+
+Solutions:
+
+Check resource allocation:
+
+Verify adequate CPU and memory allocation
+Review host resource utilization
+Optimize storage performance:
+
+Use VirtIO drivers for better performance
+Consider storage domain performance characteristics
+Network optimization:
+
+Use VirtIO network interfaces
+Verify network configuration and bandwidth
+Best Practices for VM Management
+Resource Planning
+CPU Allocation:
+
+Don't over-allocate virtual CPUs
+Consider CPU topology for application requirements
+Monitor CPU ready time and utilization
+Memory Management:
+
+Set appropriate memory guarantees
+Use memory ballooning for dynamic allocation
+Monitor memory pressure and swapping
+Storage Optimization:
+
+Use thin provisioning for efficient space utilization
+Implement appropriate disk interfaces (VirtIO-SCSI)
+Plan for snapshot and backup storage requirements
+Security Considerations
+Network Security:
+
+Implement appropriate network segmentation
+Use VLANs for traffic isolation
+Configure firewall rules as needed
+Access Control:
+
+Implement role-based access control
+Use strong authentication mechanisms
+Regular security updates and patches
+Conclusion
+In this comprehensive lab, you have successfully accomplished several critical virtualization management tasks using Red Hat Virtualization Manager (RHVM). Here's what you've learned and why it matters:
+
+Key Accomplishments
+RHVM Console Mastery: You've gained hands-on experience navigating the RHVM web interface, understanding its layout, and accessing key management functions. This foundational skill is essential for any virtualization administrator.
+
+Virtual Machine Creation: You've successfully created a virtual machine from scratch, configuring all essential components including naming, operating system selection, and basic parameters. This process forms the backbone of virtualization management.
+
+Resource Configuration Expertise: You've learned to properly allocate and configure critical VM resources:
+
+CPU allocation with proper topology understanding
+Memory management including guaranteed memory and ballooning
+Storage configuration with appropriate disk interfaces and allocation policies
+Network setup with proper interface selection and connectivity
+VM Lifecycle Management: You've experienced the complete process of starting a virtual machine, monitoring its status, and verifying its operational state through various monitoring tools.
+
+Why This Matters
+Professional Relevance: These skills directly apply to real-world enterprise environments where virtualization administrators manage hundreds or thousands of virtual machines. The ability to efficiently create, configure, and manage VMs is fundamental to modern IT infrastructure.
+
+Certification Preparation: This lab directly supports preparation for the Red Hat Certified Specialist in Virtualization exam, providing hands-on experience with the exact tools and processes tested in the certification.
+
+Scalability Understanding: By working with RHVM, you've gained insight into enterprise-grade virtualization management, understanding how resources are allocated, monitored, and optimized in large-scale environments.
+
+Best Practices Foundation: The configuration choices you've made in this lab reflect industry best practices for VM resource allocation, storage management, and network configuration that will serve you well in production environments.
+
+Next Steps
+With this foundation in place, you're prepared to explore more advanced RHVM topics such as:
+
+VM templates and cloning
+High availability and migration
+Storage domain management
+Network configuration and VLANs
+Backup and snapshot management
+Performance monitoring and optimization
+The skills you've developed in this lab provide the essential groundwork for becoming proficient in enterprise virtualization management using Red Hat's industry-leading virtualization platform.
