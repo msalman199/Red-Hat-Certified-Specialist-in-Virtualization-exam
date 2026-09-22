@@ -1,0 +1,362 @@
+Lab 13: Configuring and Using Virtual Machine Snapshots
+Objectives
+By the end of this lab, students will be able to:
+
+Understand the concept and importance of VM snapshots in virtualization environments
+Create snapshots of running virtual machines using open-source tools
+Restore virtual machines from previously created snapshots
+Verify the integrity and functionality of restored virtual machines
+Implement snapshot management best practices for backup and recovery scenarios
+Troubleshoot common snapshot-related issues
+Prerequisites
+Before starting this lab, students should have:
+
+Basic understanding of Linux command-line operations
+Familiarity with virtualization concepts and terminology
+Knowledge of basic system administration tasks
+Understanding of file systems and storage concepts
+Previous experience with KVM/QEMU or similar virtualization platforms
+Required Knowledge Areas
+Linux file permissions and ownership
+Basic networking concepts
+Understanding of virtual machine lifecycle management
+Familiarity with XML configuration files
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines for this lab. Simply click Start Lab to access your environment. No need to build or configure your own virtual machines - everything is ready to use!
+
+Environment Specifications
+Host System: CentOS 8 or Ubuntu 20.04 LTS
+Virtualization Platform: KVM/QEMU with libvirt
+Management Tools: virsh, virt-manager
+Guest VM: CentOS 8 minimal installation
+Storage: 20GB allocated space for snapshots
+Task 1: Create a Snapshot of a Running VM
+Subtask 1.1: Verify VM Status and Prepare Environment
+First, let's check the status of available virtual machines and ensure our target VM is running.
+
+# List all virtual machines
+sudo virsh list --all
+
+# Check the status of our target VM (assuming VM name is 'centos8-vm')
+sudo virsh domstate centos8-vm
+
+# If the VM is not running, start it
+sudo virsh start centos8-vm
+
+# Verify the VM is running
+sudo virsh list --state-running
+Subtask 1.2: Examine Current VM Configuration
+Before creating a snapshot, it's important to understand the current VM configuration.
+
+# Display detailed VM information
+sudo virsh dominfo centos8-vm
+
+# Show VM disk information
+sudo virsh domblklist centos8-vm
+
+# Check current snapshots (should be empty initially)
+sudo virsh snapshot-list centos8-vm
+Subtask 1.3: Create Initial Data for Testing
+Let's create some test data in the VM that we can use to verify snapshot functionality.
+
+# Connect to the VM console
+sudo virsh console centos8-vm
+
+# Once connected to the VM, create test files
+echo "This is test data before snapshot" > /tmp/before_snapshot.txt
+echo "Current date: $(date)" >> /tmp/before_snapshot.txt
+
+# Create a test directory with multiple files
+mkdir -p /tmp/test_data
+for i in {1..5}; do
+    echo "Test file $i created at $(date)" > /tmp/test_data/file$i.txt
+done
+
+# List the created files
+ls -la /tmp/test_data/
+cat /tmp/before_snapshot.txt
+
+# Exit the VM console (Ctrl+] to disconnect)
+Subtask 1.4: Create the VM Snapshot
+Now we'll create our first snapshot of the running VM.
+
+# Create a snapshot with descriptive name and description
+sudo virsh snapshot-create-as centos8-vm \
+    --name "baseline-snapshot" \
+    --description "Initial snapshot with test data created on $(date)" \
+    --disk-only
+
+# Alternative: Create a full system snapshot (includes memory state)
+sudo virsh snapshot-create-as centos8-vm \
+    --name "full-baseline-snapshot" \
+    --description "Full system snapshot with memory state on $(date)"
+
+# Verify the snapshot was created successfully
+sudo virsh snapshot-list centos8-vm
+
+# Get detailed information about the snapshot
+sudo virsh snapshot-info centos8-vm baseline-snapshot
+Subtask 1.5: Verify Snapshot Creation
+Let's verify that our snapshot was created properly and examine its properties.
+
+# Display snapshot details in XML format
+sudo virsh snapshot-dumpxml centos8-vm baseline-snapshot
+
+# Check disk usage after snapshot creation
+sudo du -sh /var/lib/libvirt/images/
+
+# List all snapshots with detailed information
+sudo virsh snapshot-list centos8-vm --tree
+Task 2: Restore the VM from a Snapshot
+Subtask 2.1: Modify VM State After Snapshot
+Before restoring, let's make some changes to the VM to demonstrate the restore functionality.
+
+# Connect to the VM again
+sudo virsh console centos8-vm
+
+# Make changes to test the restore process
+echo "This data was added AFTER the snapshot" > /tmp/after_snapshot.txt
+rm /tmp/test_data/file3.txt
+echo "Modified content" >> /tmp/test_data/file1.txt
+
+# Install a package to show system-level changes
+sudo yum install -y htop
+
+# Create additional test data
+mkdir -p /tmp/post_snapshot_data
+echo "This should disappear after restore" > /tmp/post_snapshot_data/temp.txt
+
+# List current state
+ls -la /tmp/
+ls -la /tmp/test_data/
+cat /tmp/after_snapshot.txt
+
+# Exit VM console
+Subtask 2.2: Prepare for Snapshot Restoration
+Before restoring, we need to properly shut down the VM to ensure data consistency.
+
+# Gracefully shutdown the VM
+sudo virsh shutdown centos8-vm
+
+# Wait for shutdown to complete
+sleep 30
+
+# Verify VM is shut down
+sudo virsh domstate centos8-vm
+
+# If VM doesn't shut down gracefully, force it
+# sudo virsh destroy centos8-vm
+Subtask 2.3: Restore VM from Snapshot
+Now we'll restore the VM to its previous state using our snapshot.
+
+# List available snapshots before restoration
+sudo virsh snapshot-list centos8-vm
+
+# Restore the VM to the baseline snapshot
+sudo virsh snapshot-revert centos8-vm baseline-snapshot
+
+# Verify the restoration was successful
+sudo virsh domstate centos8-vm
+
+# Start the VM if it's not running
+sudo virsh start centos8-vm
+
+# Wait for VM to boot
+sleep 45
+Subtask 2.4: Alternative Restoration Methods
+Let's explore different restoration options available with virsh.
+
+# Restore and automatically start the VM
+sudo virsh snapshot-revert centos8-vm baseline-snapshot --running
+
+# Restore with force option (if needed)
+# sudo virsh snapshot-revert centos8-vm baseline-snapshot --force
+
+# Restore to a paused state
+# sudo virsh snapshot-revert centos8-vm baseline-snapshot --paused
+Task 3: Verify the Integrity of the Restored VM
+Subtask 3.1: Check File System Integrity
+Let's verify that our VM has been properly restored to its snapshot state.
+
+# Connect to the restored VM
+sudo virsh console centos8-vm
+
+# Check if our original test data is present
+cat /tmp/before_snapshot.txt
+ls -la /tmp/test_data/
+
+# Verify that post-snapshot changes are gone
+ls -la /tmp/after_snapshot.txt  # This should not exist
+ls -la /tmp/post_snapshot_data/  # This directory should not exist
+
+# Check that all original test files are present
+for i in {1..5}; do
+    if [ -f "/tmp/test_data/file$i.txt" ]; then
+        echo "File $i exists: $(cat /tmp/test_data/file$i.txt)"
+    else
+        echo "File $i is missing!"
+    fi
+done
+Subtask 3.2: Verify System State
+Check that system-level changes made after the snapshot have been reverted.
+
+# Check if htop package is still installed (it shouldn't be)
+which htop
+rpm -q htop
+
+# Verify system logs for any errors during restoration
+sudo journalctl --since "10 minutes ago" | grep -i error
+
+# Check disk usage and file system integrity
+df -h
+sudo fsck -n /dev/vda1  # Replace with appropriate device
+Subtask 3.3: Network and Service Verification
+Ensure that network connectivity and services are functioning properly after restoration.
+
+# Test network connectivity
+ping -c 3 8.8.8.8
+
+# Check system services status
+sudo systemctl status sshd
+sudo systemctl status NetworkManager
+
+# Verify system time and date
+date
+timedatectl status
+
+# Exit VM console
+Subtask 3.4: Advanced Integrity Checks
+Perform additional checks to ensure complete system integrity.
+
+# From the host system, check VM configuration
+sudo virsh dumpxml centos8-vm | grep -A 5 -B 5 disk
+
+# Verify snapshot chain integrity
+sudo virsh snapshot-list centos8-vm --tree
+
+# Check for any snapshot-related errors in logs
+sudo journalctl -u libvirtd | grep -i snapshot | tail -10
+
+# Verify VM performance after restoration
+sudo virsh domstats centos8-vm
+Snapshot Management Best Practices
+Creating Multiple Snapshots
+# Create additional snapshots for different states
+sudo virsh snapshot-create-as centos8-vm \
+    --name "post-restore-verification" \
+    --description "Snapshot after successful restoration verification"
+
+# Create snapshots with specific disk targets
+sudo virsh snapshot-create-as centos8-vm \
+    --name "disk-only-snapshot" \
+    --description "Disk-only snapshot for quick backup" \
+    --disk-only \
+    --diskspec vda,snapshot=external
+
+# List all snapshots
+sudo virsh snapshot-list centos8-vm --tree
+Snapshot Cleanup and Management
+# Delete old snapshots (be careful!)
+# sudo virsh snapshot-delete centos8-vm old-snapshot-name
+
+# Get current snapshot information
+sudo virsh snapshot-current centos8-vm
+
+# Create a snapshot management script
+cat > snapshot_manager.sh << 'EOF'
+#!/bin/bash
+VM_NAME="centos8-vm"
+SNAPSHOT_NAME="auto-snapshot-$(date +%Y%m%d-%H%M%S)"
+
+echo "Creating snapshot: $SNAPSHOT_NAME"
+sudo virsh snapshot-create-as $VM_NAME \
+    --name "$SNAPSHOT_NAME" \
+    --description "Automated snapshot created on $(date)"
+
+echo "Current snapshots for $VM_NAME:"
+sudo virsh snapshot-list $VM_NAME
+EOF
+
+chmod +x snapshot_manager.sh
+Troubleshooting Common Issues
+Issue 1: Snapshot Creation Fails
+# Check available disk space
+df -h /var/lib/libvirt/images/
+
+# Verify VM is in a consistent state
+sudo virsh domstate centos8-vm
+
+# Check for conflicting operations
+sudo virsh list --all
+ps aux | grep qemu
+Issue 2: Restoration Problems
+# Force stop VM if needed
+sudo virsh destroy centos8-vm
+
+# Check snapshot integrity
+sudo virsh snapshot-list centos8-vm
+sudo qemu-img check /var/lib/libvirt/images/centos8-vm.qcow2
+
+# Restore with force option
+sudo virsh snapshot-revert centos8-vm baseline-snapshot --force
+Issue 3: Performance Issues After Restoration
+# Check VM resource allocation
+sudo virsh dominfo centos8-vm
+
+# Monitor VM performance
+sudo virsh domstats centos8-vm
+
+# Restart libvirt services if needed
+sudo systemctl restart libvirtd
+Security Considerations
+Snapshot Security Best Practices
+# Set appropriate permissions on snapshot files
+sudo find /var/lib/libvirt/images/ -name "*.qcow2" -exec chmod 600 {} \;
+sudo chown qemu:qemu /var/lib/libvirt/images/*.qcow2
+
+# Encrypt sensitive snapshots (advanced)
+# This requires additional configuration and is beyond basic scope
+
+# Regular security audits of snapshot files
+sudo ls -la /var/lib/libvirt/images/
+sudo lsof | grep qcow2
+Performance Optimization
+Optimizing Snapshot Operations
+# Use disk-only snapshots for better performance
+sudo virsh snapshot-create-as centos8-vm \
+    --name "performance-snapshot" \
+    --disk-only
+
+# Monitor snapshot overhead
+sudo virsh domblkstat centos8-vm
+
+# Optimize storage backend
+# Consider using raw format for base images when appropriate
+Conclusion
+In this comprehensive lab, you have successfully:
+
+Created VM snapshots using virsh commands, learning both disk-only and full system snapshot creation methods
+Restored virtual machines from snapshots, understanding the importance of proper shutdown procedures and restoration verification
+Verified restoration integrity through comprehensive file system, system state, and network connectivity checks
+Implemented best practices for snapshot management, including naming conventions, cleanup procedures, and security considerations
+Key Takeaways
+Snapshots are powerful tools for backup and recovery, but they require careful management to avoid performance degradation
+Proper verification after restoration is crucial to ensure system integrity and functionality
+Regular snapshot maintenance prevents storage bloat and maintains system performance
+Understanding different snapshot types (disk-only vs. full system) helps choose the right approach for specific use cases
+Real-World Applications
+The skills learned in this lab are directly applicable to:
+
+Production environment backup strategies in enterprise virtualization deployments
+Development and testing workflows where quick rollbacks are essential
+Disaster recovery planning and implementation
+Red Hat Certified Specialist in Virtualization exam preparation and certification requirements
+Next Steps
+To further enhance your virtualization skills:
+
+Explore automated snapshot scheduling using cron jobs
+Learn about snapshot chains and their management
+Study integration with backup solutions like Bacula or Amanda
+Practice with different storage backends (NFS, iSCSI, Ceph)
+Investigate snapshot replication for disaster recovery scenarios
+This lab provides a solid foundation for managing VM snapshots in production environments and prepares you for advanced virtualization scenarios you'll encounter in professional settings.
