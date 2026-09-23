@@ -1,0 +1,577 @@
+Lab 19: Health Monitoring and Alerts for Virtual Machines
+Objectives
+By the end of this lab, students will be able to:
+
+Configure health probes and monitoring for virtual machines using open-source tools
+Set up automated alerting systems for VM status changes and performance metrics
+Implement comprehensive VM health monitoring using Prometheus, Grafana, and Alertmanager
+Create custom alert rules based on VM performance conditions
+Troubleshoot VM health issues using monitoring dashboards and logs
+Understand the importance of proactive VM monitoring in production environments
+Prerequisites
+Before starting this lab, students should have:
+
+Basic understanding of Linux command line operations
+Familiarity with virtual machine concepts and management
+Knowledge of basic networking concepts (IP addresses, ports, services)
+Understanding of system performance metrics (CPU, memory, disk, network)
+Basic knowledge of YAML configuration files
+Familiarity with web browsers for accessing monitoring dashboards
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines for this lab. Simply click Start Lab to access your environment. No need to build or configure your own virtual machines - everything is ready to use!
+
+Your lab environment includes:
+
+Monitor Server: CentOS 8 with Prometheus, Grafana, and Alertmanager pre-installed
+Target VMs: Multiple virtual machines to monitor (VM1, VM2, VM3)
+Network Configuration: All machines are connected and accessible
+Pre-installed Tools: All necessary monitoring and alerting tools are ready
+Task 1: Configure Health Probes for Virtual Machines
+Subtask 1.1: Set Up Node Exporter on Target VMs
+Node Exporter collects hardware and OS metrics from virtual machines.
+
+Step 1: Connect to your first target VM (VM1)
+
+# SSH to VM1 (use the provided IP address)
+ssh student@<VM1_IP_ADDRESS>
+Step 2: Install and configure Node Exporter
+
+# Create a dedicated user for node_exporter
+sudo useradd --no-create-home --shell /bin/false node_exporter
+
+# Download Node Exporter (latest stable version)
+cd /tmp
+wget https://github.com/prometheus/node_exporter/releases/download/v1.6.1/node_exporter-1.6.1.linux-amd64.tar.gz
+
+# Extract the archive
+tar xvf node_exporter-1.6.1.linux-amd64.tar.gz
+
+# Move binary to system path
+sudo cp node_exporter-1.6.1.linux-amd64/node_exporter /usr/local/bin/
+sudo chown node_exporter:node_exporter /usr/local/bin/node_exporter
+Step 3: Create systemd service for Node Exporter
+
+# Create service file
+sudo tee /etc/systemd/system/node_exporter.service > /dev/null <<EOF
+[Unit]
+Description=Node Exporter
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=node_exporter
+Group=node_exporter
+Type=simple
+ExecStart=/usr/local/bin/node_exporter --web.listen-address=:9100
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+Step 4: Start and enable Node Exporter service
+
+# Reload systemd and start service
+sudo systemctl daemon-reload
+sudo systemctl start node_exporter
+sudo systemctl enable node_exporter
+
+# Verify service is running
+sudo systemctl status node_exporter
+
+# Test metrics endpoint
+curl http://localhost:9100/metrics | head -20
+Step 5: Configure firewall to allow Node Exporter
+
+# Open port 9100 for Prometheus scraping
+sudo firewall-cmd --permanent --add-port=9100/tcp
+sudo firewall-cmd --reload
+
+# Verify port is open
+sudo firewall-cmd --list-ports
+Subtask 1.2: Repeat Node Exporter Setup on Additional VMs
+Step 1: Connect to VM2 and VM3, then repeat the Node Exporter installation process from Subtask 1.1
+
+# For VM2
+ssh student@<VM2_IP_ADDRESS>
+# Repeat installation steps from Subtask 1.1
+
+# For VM3
+ssh student@<VM3_IP_ADDRESS>
+# Repeat installation steps from Subtask 1.1
+Subtask 1.3: Configure Prometheus to Scrape VM Metrics
+Step 1: Connect to the Monitor Server
+
+# SSH to Monitor Server
+ssh student@<MONITOR_SERVER_IP>
+Step 2: Configure Prometheus to monitor your VMs
+
+# Edit Prometheus configuration
+sudo nano /etc/prometheus/prometheus.yml
+Step 3: Add the following configuration to monitor your VMs
+
+# Add this to the scrape_configs section
+  - job_name: 'vm-health-monitoring'
+    static_configs:
+      - targets: 
+        - '<VM1_IP>:9100'
+        - '<VM2_IP>:9100'
+        - '<VM3_IP>:9100'
+    scrape_interval: 15s
+    metrics_path: /metrics
+    scrape_timeout: 10s
+Step 4: Restart Prometheus service
+
+# Restart Prometheus to apply new configuration
+sudo systemctl restart prometheus
+sudo systemctl status prometheus
+
+# Verify Prometheus is running
+curl http://localhost:9090/api/v1/targets
+Task 2: Set Up Alerting for VM Status Changes
+Subtask 2.1: Configure Alertmanager
+Step 1: Create Alertmanager configuration file
+
+# Create alertmanager configuration
+sudo tee /etc/alertmanager/alertmanager.yml > /dev/null <<EOF
+global:
+  smtp_smarthost: 'localhost:587'
+  smtp_from: 'alertmanager@yourdomain.com'
+
+route:
+  group_by: ['alertname']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: 'vm-alerts'
+
+receivers:
+- name: 'vm-alerts'
+  webhook_configs:
+  - url: 'http://localhost:5001/webhook'
+    send_resolved: true
+
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'dev', 'instance']
+EOF
+Step 2: Start and enable Alertmanager
+
+# Start Alertmanager service
+sudo systemctl start alertmanager
+sudo systemctl enable alertmanager
+sudo systemctl status alertmanager
+Subtask 2.2: Create Alert Rules for VM Health
+Step 1: Create alert rules directory and file
+
+# Create rules directory
+sudo mkdir -p /etc/prometheus/rules
+
+# Create VM health alert rules
+sudo tee /etc/prometheus/rules/vm_health_rules.yml > /dev/null <<EOF
+groups:
+- name: vm_health_alerts
+  rules:
+  
+  # VM Down Alert
+  - alert: VMDown
+    expr: up{job="vm-health-monitoring"} == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "VM {{ \$labels.instance }} is down"
+      description: "VM {{ \$labels.instance }} has been down for more than 1 minute."
+
+  # High CPU Usage Alert
+  - alert: HighCPUUsage
+    expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High CPU usage on {{ \$labels.instance }}"
+      description: "CPU usage is above 80% for more than 2 minutes on {{ \$labels.instance }}"
+
+  # High Memory Usage Alert
+  - alert: HighMemoryUsage
+    expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High memory usage on {{ \$labels.instance }}"
+      description: "Memory usage is above 85% for more than 2 minutes on {{ \$labels.instance }}"
+
+  # Low Disk Space Alert
+  - alert: LowDiskSpace
+    expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"})) * 100 > 90
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Low disk space on {{ \$labels.instance }}"
+      description: "Disk usage is above 90% on {{ \$labels.instance }} filesystem {{ \$labels.mountpoint }}"
+
+  # High Network Traffic Alert
+  - alert: HighNetworkTraffic
+    expr: rate(node_network_receive_bytes_total[5m]) > 100000000
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High network traffic on {{ \$labels.instance }}"
+      description: "Network receive traffic is above 100MB/s for more than 5 minutes on {{ \$labels.instance }}"
+EOF
+Step 2: Update Prometheus configuration to include alert rules
+
+# Edit Prometheus configuration
+sudo nano /etc/prometheus/prometheus.yml
+Step 3: Add rule files section to prometheus.yml
+
+# Add this section to prometheus.yml
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+# Add alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - localhost:9093
+Step 4: Restart Prometheus to load alert rules
+
+# Restart Prometheus
+sudo systemctl restart prometheus
+
+# Verify rules are loaded
+curl http://localhost:9090/api/v1/rules
+Subtask 2.3: Create Simple Webhook Receiver for Alerts
+Step 1: Create a simple webhook receiver script
+
+# Create webhook receiver script
+sudo tee /opt/webhook_receiver.py > /dev/null <<EOF
+#!/usr/bin/env python3
+import json
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import datetime
+
+class WebhookHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+        
+        try:
+            alert_data = json.loads(post_data.decode('utf-8'))
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            print(f"\n[{timestamp}] ALERT RECEIVED:")
+            print("=" * 50)
+            
+            for alert in alert_data.get('alerts', []):
+                status = alert.get('status', 'unknown')
+                alert_name = alert.get('labels', {}).get('alertname', 'Unknown')
+                instance = alert.get('labels', {}).get('instance', 'Unknown')
+                severity = alert.get('labels', {}).get('severity', 'Unknown')
+                summary = alert.get('annotations', {}).get('summary', 'No summary')
+                
+                print(f"Status: {status.upper()}")
+                print(f"Alert: {alert_name}")
+                print(f"Instance: {instance}")
+                print(f"Severity: {severity}")
+                print(f"Summary: {summary}")
+                print("-" * 30)
+            
+            # Log to file
+            with open('/var/log/vm_alerts.log', 'a') as f:
+                f.write(f"[{timestamp}] {json.dumps(alert_data, indent=2)}\n")
+                
+        except Exception as e:
+            print(f"Error processing alert: {e}")
+        
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'OK')
+
+if __name__ == '__main__':
+    server = HTTPServer(('localhost', 5001), WebhookHandler)
+    print("Webhook receiver started on http://localhost:5001")
+    server.serve_forever()
+EOF
+
+# Make script executable
+sudo chmod +x /opt/webhook_receiver.py
+Step 2: Create systemd service for webhook receiver
+
+# Create service file
+sudo tee /etc/systemd/system/webhook-receiver.service > /dev/null <<EOF
+[Unit]
+Description=VM Alert Webhook Receiver
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /opt/webhook_receiver.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+Step 3: Start webhook receiver service
+
+# Start and enable webhook receiver
+sudo systemctl daemon-reload
+sudo systemctl start webhook-receiver
+sudo systemctl enable webhook-receiver
+sudo systemctl status webhook-receiver
+Task 3: Use Monitoring Tools to View VM Health Status and Trigger Alerts
+Subtask 3.1: Configure Grafana Dashboards for VM Monitoring
+Step 1: Access Grafana web interface
+
+# Grafana should be running on port 3000
+# Open your web browser and navigate to:
+# http://<MONITOR_SERVER_IP>:3000
+# Default login: admin/admin
+Step 2: Add Prometheus as a data source
+
+Click on Configuration (gear icon) → Data Sources
+Click Add data source
+Select Prometheus
+Set URL to: http://localhost:9090
+Click Save & Test
+Step 3: Import VM monitoring dashboard
+
+Create a custom dashboard by clicking + → Dashboard → Add new panel
+
+Step 4: Create VM health overview panel
+
+{
+  "dashboard": {
+    "title": "VM Health Monitoring",
+    "panels": [
+      {
+        "title": "VM Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"vm-health-monitoring\"}",
+            "legendFormat": "{{instance}}"
+          }
+        ]
+      },
+      {
+        "title": "CPU Usage %",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "100 - (avg by(instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+            "legendFormat": "{{instance}}"
+          }
+        ]
+      },
+      {
+        "title": "Memory Usage %",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+            "legendFormat": "{{instance}}"
+          }
+        ]
+      }
+    ]
+  }
+}
+Subtask 3.2: Test Alert Conditions
+Step 1: Generate high CPU load on VM1 to trigger alerts
+
+# SSH to VM1
+ssh student@<VM1_IP>
+
+# Generate CPU load (run in background)
+stress --cpu 4 --timeout 300s &
+
+# Monitor CPU usage
+top
+Step 2: Monitor alerts in Prometheus
+
+# Check active alerts in Prometheus
+curl http://localhost:9090/api/v1/alerts | jq '.'
+
+# Or visit http://<MONITOR_SERVER_IP>:9090/alerts in browser
+Step 3: Check Alertmanager for fired alerts
+
+# Check Alertmanager alerts
+curl http://localhost:9093/api/v1/alerts | jq '.'
+
+# Or visit http://<MONITOR_SERVER_IP>:9093 in browser
+Step 4: Verify webhook receiver got the alert
+
+# Check webhook receiver logs
+sudo journalctl -u webhook-receiver -f
+
+# Check alert log file
+sudo tail -f /var/log/vm_alerts.log
+Subtask 3.3: Test VM Down Alert
+Step 1: Stop Node Exporter on VM2 to simulate VM down
+
+# SSH to VM2
+ssh student@<VM2_IP>
+
+# Stop node_exporter service
+sudo systemctl stop node_exporter
+Step 2: Wait and observe the VM Down alert
+
+# On Monitor Server, check for VM Down alert
+# Wait about 2-3 minutes for alert to fire
+curl http://localhost:9090/api/v1/alerts | jq '.data.alerts[] | select(.labels.alertname=="VMDown")'
+Step 3: Restart Node Exporter and observe alert resolution
+
+# On VM2, restart node_exporter
+sudo systemctl start node_exporter
+
+# Verify service is running
+sudo systemctl status node_exporter
+Subtask 3.4: Create Custom Health Check Script
+Step 1: Create a comprehensive VM health check script
+
+# Create health check script on Monitor Server
+sudo tee /opt/vm_health_check.sh > /dev/null <<'EOF'
+#!/bin/bash
+
+# VM Health Check Script
+# This script checks the health of monitored VMs
+
+PROMETHEUS_URL="http://localhost:9090"
+LOG_FILE="/var/log/vm_health_check.log"
+
+echo "$(date): Starting VM Health Check" | tee -a $LOG_FILE
+
+# Function to query Prometheus
+query_prometheus() {
+    local query="$1"
+    curl -s "${PROMETHEUS_URL}/api/v1/query?query=${query}" | jq -r '.data.result[]'
+}
+
+# Check VM availability
+echo "Checking VM availability..." | tee -a $LOG_FILE
+vm_status=$(query_prometheus "up{job=\"vm-health-monitoring\"}")
+echo "$vm_status" | jq -r '"VM: " + .metric.instance + " Status: " + (.value[1] | if . == "1" then "UP" else "DOWN" end)' | tee -a $LOG_FILE
+
+# Check CPU usage
+echo "Checking CPU usage..." | tee -a $LOG_FILE
+cpu_usage=$(query_prometheus "100 - (avg by(instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)")
+echo "$cpu_usage" | jq -r '"VM: " + .metric.instance + " CPU: " + (.value[1] | tonumber | floor | tostring) + "%"' | tee -a $LOG_FILE
+
+# Check Memory usage
+echo "Checking Memory usage..." | tee -a $LOG_FILE
+mem_usage=$(query_prometheus "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100")
+echo "$mem_usage" | jq -r '"VM: " + .metric.instance + " Memory: " + (.value[1] | tonumber | floor | tostring) + "%"' | tee -a $LOG_FILE
+
+# Check active alerts
+echo "Checking active alerts..." | tee -a $LOG_FILE
+active_alerts=$(curl -s "${PROMETHEUS_URL}/api/v1/alerts" | jq -r '.data.alerts[] | select(.state=="firing") | "ALERT: " + .labels.alertname + " on " + .labels.instance + " - " + .annotations.summary')
+
+if [ -n "$active_alerts" ]; then
+    echo "$active_alerts" | tee -a $LOG_FILE
+else
+    echo "No active alerts" | tee -a $LOG_FILE
+fi
+
+echo "$(date): VM Health Check completed" | tee -a $LOG_FILE
+echo "----------------------------------------" | tee -a $LOG_FILE
+EOF
+
+# Make script executable
+sudo chmod +x /opt/vm_health_check.sh
+Step 2: Run the health check script
+
+# Run health check
+sudo /opt/vm_health_check.sh
+
+# View the log
+sudo cat /var/log/vm_health_check.log
+Step 3: Set up cron job for regular health checks
+
+# Add cron job to run health check every 5 minutes
+echo "*/5 * * * * root /opt/vm_health_check.sh" | sudo tee -a /etc/crontab
+
+# Restart cron service
+sudo systemctl restart crond
+Troubleshooting Common Issues
+Issue 1: Node Exporter Not Accessible
+Problem: Prometheus cannot scrape metrics from Node Exporter
+
+Solution:
+
+# Check if Node Exporter is running
+sudo systemctl status node_exporter
+
+# Check if port is open
+sudo netstat -tlnp | grep 9100
+
+# Check firewall rules
+sudo firewall-cmd --list-ports
+
+# Test connectivity from Monitor Server
+telnet <VM_IP> 9100
+Issue 2: Alerts Not Firing
+Problem: Alert rules are not triggering alerts
+
+Solution:
+
+# Check if rules are loaded in Prometheus
+curl http://localhost:9090/api/v1/rules
+
+# Verify rule syntax
+promtool check rules /etc/prometheus/rules/vm_health_rules.yml
+
+# Check Prometheus logs
+sudo journalctl -u prometheus -f
+Issue 3: Webhook Receiver Not Getting Alerts
+Problem: Alertmanager is not sending alerts to webhook
+
+Solution:
+
+# Check Alertmanager configuration
+sudo cat /etc/alertmanager/alertmanager.yml
+
+# Test webhook endpoint
+curl -X POST http://localhost:5001/webhook -d '{"test": "message"}'
+
+# Check Alertmanager logs
+sudo journalctl -u alertmanager -f
+Conclusion
+In this comprehensive lab, you have successfully:
+
+Accomplished Tasks:
+
+Configured comprehensive VM health monitoring using Prometheus and Node Exporter to collect system metrics from multiple virtual machines
+Set up automated alerting system with Alertmanager and custom webhook receiver to notify administrators of VM health issues
+Created custom alert rules for critical conditions including VM downtime, high CPU usage, memory exhaustion, disk space issues, and network traffic anomalies
+Built monitoring dashboards in Grafana to visualize VM health metrics and performance trends in real-time
+Implemented proactive health checking with automated scripts that regularly assess VM status and log health information
+Tested alert conditions by simulating various failure scenarios to ensure the monitoring system responds appropriately
+Why This Matters:
+
+VM health monitoring and alerting is crucial in production environments because:
+
+Proactive Issue Detection: Identifies problems before they cause service outages or data loss
+Resource Optimization: Helps administrators understand resource usage patterns and optimize VM allocation
+Compliance and SLA Management: Ensures systems meet availability requirements and service level agreements
+Operational Efficiency: Reduces manual monitoring overhead and enables faster response to incidents
+Capacity Planning: Provides historical data for making informed decisions about infrastructure scaling
+Real-World Applications:
+
+Enterprise Data Centers: Monitor hundreds of VMs across multiple hosts and clusters
+Cloud Infrastructure: Ensure optimal performance and cost management in cloud environments
+DevOps Pipelines: Integrate monitoring into CI/CD processes for application deployment health
+Disaster Recovery: Quickly identify and respond to system failures to minimize downtime
+The skills you've developed in this lab are directly applicable to Red Hat Certified Specialist in Virtualization exam objectives and are essential for managing production virtualization environments. You now have hands-on experience with industry-standard open-source monitoring tools that are widely used in enterprise environments.
+
+Next Steps: Consider exploring advanced monitoring features such as custom metrics collection, integration with ticketing systems, and automated remediation scripts that can respond to specific alert conditions.
