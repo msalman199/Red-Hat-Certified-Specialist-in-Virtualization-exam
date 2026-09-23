@@ -1,0 +1,410 @@
+Lab 17: Configuring Networking for Virtual Machines
+Objectives
+By the end of this lab, students will be able to:
+
+Configure and manage logical networks in Red Hat Virtualization Manager (RHVM)
+Create and configure MAC address pools for virtual machine network interfaces
+Test and verify VM network connectivity across multiple virtualization hosts
+Understand the fundamentals of virtualized networking in enterprise environments
+Troubleshoot common networking issues in virtualized infrastructures
+Prerequisites
+Before starting this lab, students should have:
+
+Basic understanding of Linux networking concepts (IP addresses, subnets, VLANs)
+Familiarity with Red Hat Enterprise Linux command line interface
+Knowledge of virtualization concepts and terminology
+Understanding of network interface configuration in Linux
+Basic experience with Red Hat Virtualization Manager interface
+Required Knowledge Areas
+TCP/IP networking fundamentals
+Linux system administration basics
+Virtual machine concepts
+Network troubleshooting tools (ping, traceroute, netstat)
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines for this lab. Simply click Start Lab to access your environment - no need to build your own virtual machines or install software.
+
+Your lab environment includes:
+
+Red Hat Virtualization Manager (RHVM) server
+Two virtualization hosts (hypervisors)
+Pre-installed virtual machines for testing
+Network configuration tools and utilities
+Task 1: Set Up a Logical Network in RHVM
+Subtask 1.1: Access RHVM Administration Portal
+Connect to RHVM Web Interface
+
+Open your web browser and navigate to the RHVM administration portal:
+
+https://rhvm-server.lab.local/ovirt-engine
+Login with Administrator Credentials
+
+Use the provided credentials:
+
+Username: admin@internal
+Password: RedHat123!
+Navigate to Network Configuration
+
+Click on Compute in the left navigation panel
+Select Networks from the dropdown menu
+You will see the default ovirtmgmt network already configured
+Subtask 1.2: Create a New Logical Network
+Create New Network
+
+Click the New button to create a new logical network.
+
+Configure Network Properties
+
+Fill in the following details:
+
+Name: lab-network-17
+Description: Lab 17 Virtual Machine Network
+VLAN Tagging: Check this option
+VLAN ID: 100
+VM Network: Check this option (enables VM connectivity)
+MTU: Leave as default (1500)
+Advanced Network Settings
+
+Click on the Cluster tab:
+
+Select your cluster (usually Default)
+Check Required to make this network mandatory
+Check Display Network if you want to use this for display traffic
+Save Network Configuration
+
+Click OK to create the logical network.
+
+Subtask 1.3: Attach Network to Hosts
+Navigate to Hosts
+
+Click on Compute → Hosts
+Select your first virtualization host
+Configure Host Network Interface
+
+Click on Network Interfaces tab
+Click Setup Host Networks
+Drag the lab-network-17 network to an available network interface
+Configure the network interface:
+# Example network configuration
+Interface: eth1
+Network: lab-network-17
+Boot Protocol: Static IP
+IP Address: 192.168.100.10
+Subnet Mask: 255.255.255.0
+Apply Configuration
+
+Click OK to apply the network configuration to the host.
+
+Repeat for Additional Hosts
+
+Repeat the same process for your second virtualization host:
+
+IP Address: 192.168.100.11
+Same subnet mask and network settings
+Subtask 1.4: Verify Network Configuration
+Check Network Status
+
+In the RHVM interface, verify that:
+
+The logical network shows as Up status
+All hosts show the network as In Sync
+No error messages appear in the events log
+Command Line Verification
+
+SSH to each host and verify network configuration:
+
+# Connect to first host
+ssh root@host1.lab.local
+
+# Check network interfaces
+ip addr show
+
+# Verify VLAN interface
+ip addr show eth1.100
+
+# Check routing table
+ip route show
+Task 2: Configure MAC Address Pools for VM Network Interfaces
+Subtask 2.1: Create Custom MAC Address Pool
+Access MAC Address Pool Configuration
+
+In RHVM, click on Administration → Configure
+Select MAC Address Pools from the left panel
+Create New MAC Pool
+
+Click New to create a custom MAC address pool:
+
+Name: lab-mac-pool-17
+Description: Custom MAC pool for Lab 17 VMs
+Allow Duplicates: Unchecked
+Define MAC Address Range
+
+Add MAC address ranges for your pool:
+
+From: 00:1a:4a:17:00:00
+To: 00:1a:4a:17:ff:ff
+Click Add to include this range in the pool.
+
+Save MAC Pool Configuration
+
+Click OK to create the MAC address pool.
+
+Subtask 2.2: Assign MAC Pool to Data Center
+Navigate to Data Centers
+
+Click on Compute → Data Centers
+Select your data center (usually Default)
+Edit Data Center Properties
+
+Click Edit
+In the General tab, find MAC Address Pool
+Select lab-mac-pool-17 from the dropdown
+Click OK to save changes
+Subtask 2.3: Configure VM Network Interfaces with Custom MAC
+Create Test Virtual Machine
+
+Navigate to Compute → Virtual Machines
+Click New to create a new VM:
+Name: test-vm-network-17
+Operating System: Red Hat Enterprise Linux 8.x x64
+Memory: 2048 MB
+CPU: 2 cores
+Disk: 20 GB
+Configure Network Interface
+
+In the VM creation dialog:
+
+Click on System tab
+Under Network Interfaces, click Add
+Configure the interface:
+Name: nic1
+Profile: lab-network-17
+Type: VirtIO
+MAC Address: (will be auto-assigned from pool)
+Verify MAC Assignment
+
+After creating the VM, check that it received a MAC address from your custom pool:
+
+Select the VM
+Click on Network Interfaces tab
+Verify the MAC address starts with 00:1a:4a:17
+Subtask 2.4: Create Additional Test VMs
+Clone Test VM
+
+Create two more VMs for network testing:
+
+# VM Names:
+test-vm-network-17-host1
+test-vm-network-17-host2
+Distribute VMs Across Hosts
+
+Assign test-vm-network-17-host1 to run on Host 1
+Assign test-vm-network-17-host2 to run on Host 2
+This ensures cross-host network testing
+Configure Network Settings
+
+For each VM, configure network interfaces to use the lab-network-17 profile.
+
+Task 3: Test VM Network Connectivity Across Multiple Hosts
+Subtask 3.1: Start and Configure Test VMs
+Power On Virtual Machines
+
+Start all three test VMs:
+
+test-vm-network-17
+test-vm-network-17-host1
+test-vm-network-17-host2
+Configure IP Addresses
+
+Connect to each VM console and configure static IP addresses:
+
+VM 1 (test-vm-network-17):
+
+# Connect via console
+nmcli con add type ethernet con-name lab-net ifname eth0
+nmcli con mod lab-net ipv4.addresses 192.168.100.101/24
+nmcli con mod lab-net ipv4.method manual
+nmcli con up lab-net
+VM 2 (test-vm-network-17-host1):
+
+nmcli con add type ethernet con-name lab-net ifname eth0
+nmcli con mod lab-net ipv4.addresses 192.168.100.102/24
+nmcli con mod lab-net ipv4.method manual
+nmcli con up lab-net
+VM 3 (test-vm-network-17-host2):
+
+nmcli con add type ethernet con-name lab-net ifname eth0
+nmcli con mod lab-net ipv4.addresses 192.168.100.103/24
+nmcli con mod lab-net ipv4.method manual
+nmcli con up lab-net
+Subtask 3.2: Test Basic Network Connectivity
+Ping Test Between VMs
+
+From VM 1, test connectivity to other VMs:
+
+# Test connectivity to VM on same host
+ping -c 4 192.168.100.102
+
+# Test connectivity to VM on different host
+ping -c 4 192.168.100.103
+Verify Network Interface Configuration
+
+On each VM, verify network configuration:
+
+# Check IP configuration
+ip addr show eth0
+
+# Check routing table
+ip route show
+
+# Verify MAC address assignment
+ip link show eth0
+Test Network Performance
+
+Install and use network testing tools:
+
+# Install network tools
+dnf install -y iperf3 traceroute
+
+# On VM 1 (server)
+iperf3 -s
+
+# On VM 2 (client)
+iperf3 -c 192.168.100.101 -t 10
+Subtask 3.3: Advanced Network Testing
+Test Cross-Host Communication
+
+Verify that VMs on different hosts can communicate:
+
+# From VM on Host 1 to VM on Host 2
+traceroute 192.168.100.103
+
+# Check network latency
+ping -c 10 192.168.100.103 | tail -1
+Monitor Network Traffic
+
+Use network monitoring tools to observe traffic:
+
+# Install monitoring tools
+dnf install -y tcpdump netstat-nat
+
+# Monitor network interface
+tcpdump -i eth0 -n icmp
+
+# Check network statistics
+netstat -i
+Test Network Failover
+
+Simulate network issues and test connectivity:
+
+# Temporarily disable network interface
+nmcli con down lab-net
+
+# Test connectivity (should fail)
+ping 192.168.100.102
+
+# Re-enable interface
+nmcli con up lab-net
+
+# Verify connectivity restored
+ping 192.168.100.102
+Subtask 3.4: Document Network Configuration
+Create Network Documentation
+
+Document your network configuration:
+
+# Create documentation file
+cat > /root/lab17-network-config.txt << EOF
+Lab 17 Network Configuration Summary
+===================================
+
+Logical Network: lab-network-17
+VLAN ID: 100
+Subnet: 192.168.100.0/24
+
+MAC Address Pool: lab-mac-pool-17
+Range: 00:1a:4a:17:00:00 - 00:1a:4a:17:ff:ff
+
+VM Network Assignments:
+- test-vm-network-17: 192.168.100.101
+- test-vm-network-17-host1: 192.168.100.102
+- test-vm-network-17-host2: 192.168.100.103
+
+Host Network Configuration:
+- Host 1: 192.168.100.10/24
+- Host 2: 192.168.100.11/24
+EOF
+Verify Final Configuration
+
+Run final verification tests:
+
+# Test all VM connectivity
+for ip in 192.168.100.101 192.168.100.102 192.168.100.103; do
+    echo "Testing connectivity to $ip"
+    ping -c 2 $ip
+done
+
+# Check MAC address assignments
+virsh list --all
+virsh domiflist test-vm-network-17
+Troubleshooting Common Issues
+Network Connectivity Problems
+Issue: VMs cannot communicate across hosts
+
+Solution:
+
+# Check host network configuration
+ip addr show
+ip route show
+
+# Verify VLAN configuration
+cat /proc/net/vlan/config
+
+# Check firewall rules
+firewall-cmd --list-all
+MAC Address Pool Issues
+Issue: MAC address conflicts or assignment failures
+
+Solution:
+
+# Check MAC pool usage in RHVM
+# Navigate to Administration → Configure → MAC Address Pools
+# Verify pool ranges and usage statistics
+
+# Reset VM network interface if needed
+virsh domif-setlink test-vm-network-17 vnet0 down
+virsh domif-setlink test-vm-network-17 vnet0 up
+VLAN Configuration Problems
+Issue: VLAN traffic not passing between hosts
+
+Solution:
+
+# Verify VLAN interface creation
+ip link show | grep 100
+
+# Check switch configuration (if applicable)
+# Ensure VLAN 100 is configured on physical switches
+
+# Test VLAN connectivity at host level
+ping -I eth1.100 192.168.100.11
+Conclusion
+In this lab, you have successfully accomplished several critical networking tasks in a virtualized environment:
+
+Key Achievements:
+
+Logical Network Configuration: You created and configured a custom logical network (lab-network-17) with VLAN tagging, enabling network segmentation and isolation for virtual machines.
+
+MAC Address Pool Management: You established a custom MAC address pool to ensure consistent and organized MAC address assignment for VM network interfaces, preventing conflicts and enabling better network management.
+
+Cross-Host Network Testing: You verified that virtual machines can communicate effectively across different virtualization hosts, demonstrating the power and flexibility of virtualized networking.
+
+Why This Matters:
+
+Enterprise Readiness: These skills are essential for managing production virtualization environments where network isolation, performance, and reliability are critical.
+
+Scalability: Understanding logical networks and MAC pools enables you to design and implement large-scale virtualized infrastructures that can grow with organizational needs.
+
+Troubleshooting Foundation: The testing and verification procedures you learned provide the foundation for diagnosing and resolving network issues in complex virtualized environments.
+
+Certification Preparation: This hands-on experience directly supports your preparation for the Red Hat Certified Specialist in Virtualization exam, demonstrating practical competency in virtualized networking.
+
+The networking concepts and procedures you've mastered in this lab form the backbone of modern data center operations, cloud computing platforms, and enterprise virtualization deployments. These skills will serve you well as you advance in your virtualization and cloud infrastructure career.
