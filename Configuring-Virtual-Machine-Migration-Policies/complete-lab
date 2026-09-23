@@ -1,0 +1,277 @@
+Lab 16: Configuring Virtual Machine Migration Policies
+Objectives
+By the end of this lab, students will be able to:
+
+Understand the concepts of VM migration and why it matters in virtualized environments
+Configure a KVM/libvirt host pair for live migration over TCP
+Perform a manual live migration of a running virtual machine between two hosts
+Use valid virsh migrate options (including compression and auto-convergence flags) to tune migration behavior
+Troubleshoot common migration failures related to networking, storage, and permissions
+Prerequisites
+Before starting this lab, students should have:
+
+Basic understanding of Linux command line operations
+Familiarity with virtualization concepts (hypervisors, VMs, hosts)
+Understanding of file permissions and systemd service management
+Basic knowledge of XML configuration files
+Required Tools
+This lab assumes two Linux hosts (or two VMs acting as nested-virtualization hosts) named host1 and host2, both with KVM/QEMU and libvirt installed, and an NFS share mounted at /shared/storage on both hosts. Al Nafi's pre-configured cloud lab environment provides this out of the box â click Start Lab to access host1 and host2.
+
+If you are building the environment yourself, install the required packages on both hosts:
+
+# RHEL/CentOS/Rocky family
+sudo yum install -y qemu-kvm libvirt libvirt-client virt-install nfs-utils
+
+# Debian/Ubuntu family
+sudo apt-get update
+sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients virtinst nfs-common
+Verify libvirt version on each host (migration flag support depends on this):
+
+virsh --version
+libvirtd --version
+This lab was validated against libvirt 6.0 and newer, where --compressed and --auto-converge are supported flags of virsh migrate.
+
+Lab Environment Setup
+Your Lab Environment Includes:
+host1: Primary virtualization host with KVM/QEMU and libvirt
+host2: Secondary virtualization host used as the migration target
+Shared Storage: NFS export mounted at /shared/storage on both hosts, so disk images do not need to be copied during migration
+Test VM: A minimal VM you will create and migrate between hosts
+All commands below are run as a user with sudo privileges unless otherwise noted. Replace host2.lab.local with the actual hostname or IP address of your second host if different in your environment.
+
+Task 1: Configure Libvirt Hosts for Live Migration
+Subtask 1.1: Verify Environment and Connectivity
+Step 1: On host1, verify KVM and libvirt are running
+
+sudo systemctl status libvirtd --no-pager
+lsmod | grep kvm
+sudo virsh list --all
+Expected output: libvirtd shows active (running), kvm and either kvm_intel or kvm_amd appear in the lsmod output, and virsh list --all runs without error (it may show no VMs yet).
+
+Step 2: Verify network connectivity to host2
+
+ping -c 3 host2.lab.local
+ssh root@host2.lab.local "hostname && date"
+Expected output: 0% packet loss on the ping, and the SSH command prints host2's hostname and current date, confirming key-based or password SSH access works.
+
+Step 3: Verify shared storage is mounted and writable on both hosts
+
+df -h | grep /shared/storage
+touch /shared/storage/test-file
+ls -la /shared/storage/test-file
+rm /shared/storage/test-file
+
+ssh root@host2.lab.local "touch /shared/storage/test-file && ls -la /shared/storage/test-file && rm /shared/storage/test-file"
+Deliverable 1.1: Terminal output showing successful ping, SSH login, and file creation/removal on /shared/storage from both hosts. This confirms network and storage prerequisites for migration are met.
+
+Subtask 1.2: Configure Libvirt for TCP-Based Migration
+By default, libvirt only listens on a local Unix socket. To migrate over qemu+tcp://, the daemon must be told to listen on TCP.
+
+Step 1: On both host1 and host2, edit the libvirtd configuration
+
+sudo nano /etc/libvirt/libvirtd.conf
+Ensure the following lines are present (uncomment or add them). Note: this lab uses auth_tcp = "none" for simplicity in an isolated lab network only â never use this setting on a production or internet-facing host.
+
+listen_tls = 0
+listen_tcp = 1
+tcp_port = "16509"
+listen_addr = "0.0.0.0"
+auth_tcp = "none"
+Step 2: Enable the --listen argument for the libvirtd service
+
+On systemd-based distributions, libvirtd is usually started via a systemd socket or unit that needs the --listen flag added. Check which mechanism your distribution uses:
+
+systemctl cat libvirtd.service | grep ExecStart
+If libvirtd is socket-activated, enable and start the TCP socket unit instead of editing ExecStart directly:
+
+sudo systemctl enable --now libvirtd-tcp.socket
+If your distribution uses a sysconfig/default file instead, add the listen flag there:
+
+echo 'LIBVIRTD_ARGS="--listen"' | sudo tee -a /etc/sysconfig/libvirtd
+Step 3: Restart libvirtd and verify it is listening on TCP port 16509
+
+sudo systemctl restart libvirtd
+sleep 3
+sudo ss -tlnp | grep 16509
+Expected output: a line showing a process (libvirtd or virtlogd/virtproxyd helper) bound to 0.0.0.0:16509. Repeat Steps 1-3 on host2.
+
+Deliverable 1.2: Output of sudo ss -tlnp | grep 16509 from both host1 and host2 showing the port is listening. This confirms both hosts can accept incoming migration connections.
+
+Task 2: Create and Live-Migrate a Test Virtual Machine
+Subtask 2.1: Create a Minimal Test VM on host1
+Step 1: Create a disk image on shared storage
+
+sudo mkdir -p /shared/storage/vms
+sudo qemu-img create -f qcow2 /shared/storage/vms/test-vm.qcow2 5G
+Step 2: Write the VM definition file
+
+sudo tee /tmp/test-vm.xml > /dev/null <<'EOF'
+<domain type='kvm'>
+  <name>test-vm</name>
+  <memory unit='KiB'>1048576</memory>
+  <currentMemory unit='KiB'>1048576</currentMemory>
+  <vcpu placement='static'>2</vcpu>
+  <os>
+    <type arch='x86_64' machine='pc'>hvm</type>
+    <boot dev='hd'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <cpu mode='host-model'/>
+  <clock offset='utc'>
+    <timer name='rtc' tickpolicy='catchup'/>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='hpet' present='no'/>
+  </clock>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+  <devices>
+    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2'/>
+      <source file='/shared/storage/vms/test-vm.qcow2'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+    <controller type='pci' index='0' model='pci-root'/>
+    <controller type='virtio-serial' index='0'/>
+    <interface type='bridge'>
+      <mac address='52:54:00:12:34:56'/>
+      <source bridge='virbr0'/>
+      <model type='virtio'/>
+    </interface>
+    <serial type='pty'>
+      <target type='isa-serial' port='0'/>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+    <input type='tablet' bus='usb'/>
+    <input type='mouse' bus='ps2'/>
+    <input type='keyboard' bus='ps2'/>
+    <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'>
+      <listen type='address' address='0.0.0.0'/>
+    </graphics>
+    <video>
+      <model type='cirrus' vram='16384' heads='1' primary='yes'/>
+    </video>
+    <memballoon model='virtio'/>
+  </devices>
+</domain>
+EOF
+Note: this configuration path uses /usr/bin/qemu-system-x86_64. Some distributions install this at /usr/bin/qemu-kvm or /usr/libexec/qemu-kvm instead. Verify with which qemu-system-x86_64 || which qemu-kvm and adjust the <emulator> path in the XML if needed before defining the VM.
+
+Step 3: Define and start the VM
+
+sudo virsh define /tmp/test-vm.xml
+sudo virsh start test-vm
+sudo virsh list --state-running
+Expected output: test-vm appears in the running list with an assigned id.
+
+Deliverable 2.1: Output of virsh list --state-running showing test-vm in the running state on host1.
+
+Subtask 2.2: Perform a Live Migration to host2
+Step 1: Confirm the VM's current host and shared-disk visibility from the target
+
+sudo virsh dominfo test-vm
+ssh root@host2.lab.local "ls -la /shared/storage/vms/test-vm.qcow2"
+Because the disk lives on shared NFS storage, host2 can see the same qcow2 file without any file copy â this is what makes fast live migration (without --copy-storage-all) possible.
+
+Step 2: Perform the live migration using valid virsh migrate flags
+
+sudo virsh migrate --live --persistent --undefinesource --verbose \
+    test-vm qemu+tcp://host2.lab.local/system
+To additionally apply bandwidth limiting, compression, and auto-convergence (all valid virsh migrate command-line options, not XML policy elements), use:
+
+sudo virsh migrate --live --persistent --undefinesource --verbose \
+    --bandwidth 100 --compressed --auto-converge \
+    test-vm qemu+tcp://host2.lab.local/system
+--compressed enables page compression during memory transfer to reduce bandwidth use, and --auto-converge throttles the guest's vCPUs if the memory dirty rate is too high for migration to converge â both are supported as of libvirt 1.2.3+/QEMU 1.6+. Run virsh migrate --help | grep -E "compressed|auto-converge" to confirm your installed version supports them.
+
+Step 3: Verify the VM moved successfully
+
+sudo virsh list --all
+ssh root@host2.lab.local "virsh list --state-running"
+Expected output: test-vm no longer appears as running on host1 (it is undefined there due to --undefinesource), and appears in the running state on host2.
+
+Step 4: Migrate it back to host1 to confirm bidirectional migration works
+
+ssh root@host2.lab.local "virsh migrate --live --persistent --undefinesource --verbose test-vm qemu+tcp://host1.lab.local/system"
+sudo virsh list --state-running
+Deliverable 2.2: Output showing test-vm running on host2 after the first migration, and running back on host1 after the return migration. Save the --verbose output of at least one migration command as evidence of migration statistics (time elapsed, data transferred).
+
+Subtask 2.3: Inspect Migration Job Information
+Step 1: While a migration is in progress (run the migrate command in one terminal and this in another), inspect job stats
+
+watch -n 1 sudo virsh domjobinfo test-vm
+Expected output: fields such as Job type, Time elapsed, Data processed, Data remaining, and Memory processed update in real time until the job completes or reports None (no job running).
+
+Step 2: After migration completes, confirm the completed job type
+
+sudo virsh domjobinfo test-vm
+Expected output: Job type: None (the job finished and cleared), or an error indicating no domain job is active on this host â both are normal after a completed migration since libvirt clears job info shortly after completion.
+
+Deliverable 2.3: A short note (2-3 sentences) in your lab log stating the Time elapsed and Data processed values observed during your migration test.
+
+Task 3: Troubleshoot Common Migration Failures
+Subtask 3.1: Simulate and Diagnose a Connection Failure
+Step 1: Temporarily block the migration port to observe the failure mode
+
+sudo firewall-cmd --add-port=16509/tcp --permanent
+sudo firewall-cmd --reload
+sudo firewall-cmd --list-ports
+If firewall-cmd is not available on your distribution, use ufw instead:
+
+sudo ufw allow 16509/tcp
+sudo ufw status
+Step 2: Confirm the port is now allowed and retry migration
+
+sudo virsh migrate --live --persistent --undefinesource --verbose \
+    test-vm qemu+tcp://host2.lab.local/system
+If the migration fails with an error mentioning Connection refused or unable to connect to server, the cause is typically one of: libvirtd not listening on TCP (revisit Subtask 1.2), a firewall blocking port 16509, or an incorrect hostname/IP in the destination URI.
+
+Deliverable 3.1: A working migration completing after firewall rules are correctly applied, plus a one-line note identifying which of the three causes above applied in your environment.
+
+Subtask 3.2: Fix Shared Storage Permission Errors
+Step 1: Check current ownership and permissions on the shared storage path
+
+ls -la /shared/storage/vms/
+id qemu 2>/dev/null || id libvirt-qemu 2>/dev/null
+Different distributions run QEMU processes as different users: RHEL-family systems typically use the qemu user, while Debian/Ubuntu use libvirt-qemu. Confirm which one applies to your systems with the id commands above before proceeding.
+
+Step 2: Apply the correct ownership so QEMU can read and write the disk image (adjust the username per Step 1)
+
+# RHEL/CentOS/Rocky
+sudo chown -R qemu:qemu /shared/storage/vms/
+sudo chmod -R 750 /shared/storage/vms/
+
+# Debian/Ubuntu
+sudo chown -R libvirt-qemu:kvm /shared/storage/vms/
+sudo chmod -R 750 /shared/storage/vms/
+Step 3: If SELinux is enforcing on RHEL-family hosts, also restore the correct security context, since permission bits alone will not fix an SELinux denial
+
+getenforce
+sudo semanage fcontext -a -t virt_image_t "/shared/storage/vms(/.*)?"
+sudo restorecon -Rv /shared/storage/vms/
+Step 4: Re-run the migration and confirm no permission-related errors appear in the logs
+
+sudo virsh migrate --live --persistent --undefinesource --verbose \
+    test-vm qemu+tcp://host2.lab.local/system
+sudo journalctl -u libvirtd --since "5 minutes ago" | grep -i -E "denied|permission"
+Expected output: the migration completes, and the journalctl filter returns no permission-denied lines. If SELinux denials persist, check sudo ausearch -m avc -ts recent for the specific denial and adjust the context or boolean accordingly.
+
+Deliverable 3.2: A completed migration with no permission or SELinux denial entries in the libvirtd log for the preceding five minutes.
+
+Expected Outcomes
+A pair of libvirt hosts configured to accept TCP-based live migration connections
+A test VM successfully live-migrated from host1 to host2 and back, using valid virsh migrate flags including --compressed and --auto-converge
+Practical experience diagnosing and resolving the two most common live migration failures: network/firewall blocking and shared storage permission mismatches
+Troubleshooting
+Issue: virsh migrate hangs indefinitely or times out without completing. Diagnostic hint: Check virsh domjobinfo test-vm on the source host for Data remaining that never decreases â this usually indicates the VM's memory dirty rate exceeds available migration bandwidth. Compare against the --bandwidth value you supplied and consider adding --auto-converge.
+
+Issue: Migration fails immediately with an XML or domain definition error on the destination host. Diagnostic hint: Run sudo virsh migrate --live --verbose --xml /tmp/test-vm.xml ... and check journalctl -u libvirtd on the destination for schema validation errors â this often means the destination host's QEMU/libvirt version does not support a device or machine type referenced in the source domain XML.
+
+Conclusion
+In this lab, you configured two KVM/libvirt hosts for TCP-based live migration, defined and started a test virtual machine backed by shared NFS storage, and performed live migrations in both directions using correct, version-appropriate virsh migrate flags such as --live, --persistent, --compressed, and --auto-converge. You also worked through the two most common real-world migration failures â blocked network ports and shared storage permission mismatches â learning to diagnose each from firewall state, journalctl logs, and SELinux audit records rather than guessing at fixes. These skills form the foundation for building highly available virtualization clusters, where automated migration and careful permission management keep workloads running with minimal downtime. As a next step, consider exploring shared storage alternatives like Ceph or GlusterFS for larger clusters, and investigate libvirt's virtlockd and virtlogd services for lock management and centralized logging in multi-host migration environments.
