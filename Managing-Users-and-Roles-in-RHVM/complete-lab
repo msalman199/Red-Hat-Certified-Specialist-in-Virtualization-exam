@@ -1,0 +1,269 @@
+Lab 20: Managing Users and Roles in RHVM
+Objectives
+By the end of this lab, students will be able to:
+
+Understand the fundamentals of Role-Based Access Control (RBAC) in Red Hat Virtualization Manager (RHVM)
+Create and manage user accounts in RHVM environment
+Configure and assign different roles to users based on organizational requirements
+Implement resource-specific access controls for virtual machines, data centers, and clusters
+Test and validate user access permissions across different RHVM components
+Troubleshoot common RBAC configuration issues in virtualization environments
+Prerequisites
+Before starting this lab, students should have:
+
+Basic understanding of Linux system administration
+Familiarity with virtualization concepts and terminology
+Knowledge of Red Hat Enterprise Linux command-line interface
+Understanding of user management principles in enterprise environments
+Completed previous RHVM labs covering basic installation and configuration
+Access to RHVM web administration portal with administrative privileges
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines with RHVM already installed and configured. Simply click Start Lab to access your environment - no need to build your own virtual machines or install software.
+
+Your lab environment includes:
+
+RHVM Manager server with web interface
+Multiple virtualization hosts
+Sample virtual machines for testing
+Pre-configured network and storage resources
+Task 1: Create New Users and Assign Roles in RHVM
+Subtask 1.1: Access RHVM Administration Portal
+Open your web browser and navigate to the RHVM administration portal
+Log in using the administrator credentials provided in your lab environment
+# Default RHVM portal URL format
+https://rhvm-manager.example.com/ovirt-engine/
+Verify you have administrative access by checking the Administration menu is available
+Navigate to Administration → Users to view the current user list
+Subtask 1.2: Configure External Authentication (Optional)
+If using external authentication sources like LDAP or Active Directory:
+
+Navigate to Administration → Configure
+Select Authentication tab
+Add authentication domain configuration:
+# Example LDAP configuration command
+engine-manage-domains add --domain=example.com --provider=ad --user=admin@example.com
+Subtask 1.3: Create Internal Users
+In the Users tab, click Add to create a new internal user
+
+Fill in the user details:
+
+User Name: vm_operator_01
+First Name: Virtual Machine
+Last Name: Operator
+Email: vm.operator@example.com
+Password: Create a secure password
+Click OK to save the user
+
+Repeat the process to create additional users:
+
+User Name: storage_admin_01
+User Name: network_admin_01
+User Name: readonly_user_01
+Subtask 1.4: Understanding RHVM Built-in Roles
+RHVM provides several built-in roles with different permission levels:
+
+SuperUser: Complete administrative access
+ClusterAdmin: Full access to specific clusters
+DataCenterAdmin: Full access to specific data centers
+HostAdmin: Host management permissions
+StorageAdmin: Storage domain management
+NetworkAdmin: Network management permissions
+VmAdmin: Virtual machine administrative access
+UserVmManager: Limited VM management for specific VMs
+PowerUserRole: Create and manage own VMs
+UserRole: Basic user access to assigned resources
+Subtask 1.5: Assign Roles to Users
+Select the user vm_operator_01 from the users list
+
+Click Permissions tab in the bottom panel
+
+Click Add to assign permissions
+
+In the Add Permission dialog:
+
+Search: Select Virtual Machines
+Object: Choose specific VMs or leave blank for all
+Role: Select UserVmManager
+User: Confirm vm_operator_01 is selected
+Click OK to apply the permission
+
+Assign additional roles:
+
+storage_admin_01: StorageAdmin role for storage domains
+network_admin_01: NetworkAdmin role for network resources
+readonly_user_01: UserRole for read-only access
+Task 2: Configure Role-Based Access to Specific Resources
+Subtask 2.1: Create Resource-Specific Permissions
+Navigate to Compute → Virtual Machines
+Select a specific virtual machine
+Click Permissions tab
+Add granular permissions:
+# Example: Assign VM-specific permissions
+User: vm_operator_01
+Role: UserVmManager
+Object: Specific VM (TestVM-01)
+Subtask 2.2: Configure Cluster-Level Access
+Navigate to Compute → Clusters
+Select a cluster (e.g., Default)
+Click Permissions tab
+Add cluster administrator:
+User: storage_admin_01
+Role: ClusterAdmin
+Inherit permissions: Check this option
+Subtask 2.3: Set Data Center Permissions
+Navigate to Compute → Data Centers
+Select the data center
+Configure permissions:
+User: network_admin_01
+Role: DataCenterAdmin
+Apply to child objects: Enable
+Subtask 2.4: Configure Storage Domain Access
+Navigate to Storage → Domains
+Select a storage domain
+Add storage-specific permissions:
+# Storage domain permission example
+User: storage_admin_01
+Role: StorageAdmin
+Resource: ISO_DOMAIN or DATA_DOMAIN
+Subtask 2.5: Network Resource Permissions
+Navigate to Network → Networks
+Select a network
+Configure network access:
+User: network_admin_01
+Role: NetworkAdmin
+Scope: Specific network or all networks
+Task 3: Test User Access Control Based on Assigned Roles
+Subtask 3.1: Test VM Operator Access
+Log out from the administrator account
+Log in as vm_operator_01
+Verify limited access:
+Can view assigned virtual machines
+Can start/stop/restart assigned VMs
+Cannot create new VMs
+Cannot access administrative functions
+# Expected behavior for vm_operator_01:
+# - Access to Compute → Virtual Machines (limited)
+# - No access to Administration menu
+# - Cannot modify cluster or host settings
+Subtask 3.2: Test Storage Administrator Access
+Log in as storage_admin_01
+Verify storage management capabilities:
+Access to Storage → Domains
+Can manage storage configurations
+Can view storage utilization
+Limited access to other resources
+Subtask 3.3: Test Network Administrator Access
+Log in as network_admin_01
+Test network management permissions:
+Access to Network → Networks
+Can create and modify networks
+Can configure VLANs and network policies
+Cannot access storage or host management
+Subtask 3.4: Test Read-Only User Access
+Log in as readonly_user_01
+Verify read-only permissions:
+Can view resources but cannot modify
+No access to administrative functions
+Cannot start/stop virtual machines
+Subtask 3.5: Document Access Test Results
+Create a test matrix to document findings:
+
+# Access Test Matrix
+User Role          | VM Access | Storage Access | Network Access | Admin Access
+vm_operator_01     | Limited   | None          | None           | None
+storage_admin_01   | None      | Full          | None           | Limited
+network_admin_01   | None      | None          | Full           | Limited
+readonly_user_01   | Read-Only | Read-Only     | Read-Only      | None
+Advanced Configuration Tasks
+Creating Custom Roles
+Navigate to Administration → Roles
+Click New to create a custom role
+Configure custom role properties:
+# Custom Role Example: VM Backup Operator
+Name: VMBackupOperator
+Description: Can create and manage VM snapshots
+Permissions:
+- VM.Audit
+- VM.Backup
+- Disk.CreateSnapshot
+- Disk.DeleteSnapshot
+Implementing Role Inheritance
+Configure parent-child role relationships
+Set up permission inheritance across resource hierarchies
+Test inherited permissions functionality
+Quota-Based Access Control
+Navigate to Administration → Quota
+Create resource quotas for different user groups:
+# Example Quota Configuration
+Quota Name: DevelopmentTeam
+Resources:
+- Virtual CPUs: 20
+- Memory: 64 GB
+- Storage: 500 GB
+Troubleshooting Common Issues
+Issue 1: User Cannot Access Assigned Resources
+Symptoms: User can log in but sees no resources
+
+Solution:
+
+Verify user permissions are correctly assigned
+Check if permissions are inherited properly
+Ensure the user is in the correct authentication domain
+# Check user permissions via CLI
+ovirt-engine-extensions-tool user-info --user-name=vm_operator_01
+Issue 2: Role Assignment Not Taking Effect
+Symptoms: User has role assigned but cannot perform expected actions
+
+Solution:
+
+Log out and log back in to refresh permissions
+Verify role includes necessary permissions
+Check for conflicting permission assignments
+Issue 3: External Authentication Issues
+Symptoms: External users cannot log in
+
+Solution:
+
+Verify authentication domain configuration
+Test LDAP/AD connectivity
+Check user group mappings
+# Test authentication domain
+engine-manage-domains validate --domain=example.com
+Security Best Practices
+Principle of Least Privilege
+Assign minimum necessary permissions
+Regularly review and audit user access
+Remove unused accounts and permissions
+Role Segregation
+Separate administrative roles by function
+Avoid assigning multiple high-privilege roles to single users
+Implement approval workflows for privilege escalation
+Monitoring and Auditing
+Enable audit logging for user activities
+Monitor permission changes
+Regular access reviews and compliance checks
+# Enable audit logging
+engine-config -s AuditLogAgingThreshold=30
+engine-config -s AuditLogCleanupTime="03:35:35"
+Conclusion
+In this comprehensive lab, you have successfully implemented Role-Based Access Control (RBAC) in Red Hat Virtualization Manager. You learned how to create users, assign appropriate roles, configure resource-specific permissions, and test access controls across different RHVM components.
+
+Key Accomplishments:
+
+User Management: Created multiple user accounts with different access requirements
+Role Assignment: Configured built-in roles and understood their permission scopes
+Resource-Specific Access: Implemented granular permissions for VMs, storage, and network resources
+Access Testing: Validated that users can only access resources appropriate to their roles
+Security Implementation: Applied security best practices for enterprise virtualization environments
+Why This Matters:
+
+RBAC is crucial for enterprise virtualization environments because it:
+
+Ensures security by limiting access to authorized personnel only
+Reduces risk of accidental or malicious changes to critical infrastructure
+Enables compliance with regulatory requirements and organizational policies
+Improves operational efficiency by giving users appropriate access levels
+Provides audit trails for accountability and troubleshooting
+This knowledge is essential for the Red Hat Certified Specialist in Virtualization exam and real-world virtualization administration. The skills you've developed will help you manage complex virtualization environments securely and efficiently, ensuring that users have the right level of access to perform their job functions while maintaining system security and integrity.
+
+Next Steps: Practice creating more complex role hierarchies, explore integration with enterprise directory services, and learn about advanced security features like multi-factor authentication and certificate-based access control.
